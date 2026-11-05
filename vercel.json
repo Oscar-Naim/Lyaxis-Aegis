@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "crons": [
+    {
+      "path": "/api/scan?cron=sentinel",
+      "schedule": "0 3 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/scan",
+      "destination": "/api/scan"
+    },
+    {
+      "source": "/api/architect",
+      "destination": "/api/architect"
+    },
+    {
+      "source": "/api/pipeline",
+      "destination": "/api/pipeline"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
