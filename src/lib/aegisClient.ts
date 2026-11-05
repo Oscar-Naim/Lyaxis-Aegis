@@ -43,10 +43,10 @@ export async function requestArchitectChat(payload: {
   currentScanContext?: Partial<ScanResult>;
   platform?: string;
 }): Promise<{ response: string }> {
-  const res = await fetch('/api/chat', {
+  const res = await fetch('/api/architect', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ action: 'chat', ...payload }),
   });
 
   if (!res.ok) {
@@ -57,7 +57,7 @@ export async function requestArchitectChat(payload: {
 }
 
 export async function simulatePipelineRun(threshold: 'critical' | 'strict' | 'permissive'): Promise<PipelineRun> {
-  const res = await fetch('/api/pipeline/simulate', {
+  const res = await fetch('/api/pipeline', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

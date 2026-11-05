@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Zap, 
   Terminal, 
@@ -35,6 +35,12 @@ export const RemediationViewer: React.FC<RemediationViewerProps> = ({
   const [activeIssueId, setActiveIssueId] = useState<string>(
     selectedIssueId || allRemediations[0]?.id || 'SEC-101'
   );
+
+  useEffect(() => {
+    if (selectedIssueId) {
+      setActiveIssueId(selectedIssueId);
+    }
+  }, [selectedIssueId]);
 
   const activeIssue = allRemediations.find(r => r.id === activeIssueId) || allRemediations[0];
 

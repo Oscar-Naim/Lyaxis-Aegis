@@ -219,6 +219,154 @@ jobs:
 Con esta compuerta configurada, ninguna incidencia crítica podrá fusionarse en la rama principal.`;
   }
 
+  if (query.includes('sql') || query.includes('inyeccion') || query.includes('cwe-89')) {
+    return `### Mitigación de Inyección SQL (CWE-89) — LYAXIS Architect
+
+La concatenación directa de parámetros en sentencias SQL permite a atacantes eludir autenticaciones y exfiltrar bases de datos completas.
+
+#### ❌ Patrón Vulnerable Detectado:
+\`\`\`ts
+const query = "SELECT * FROM coupons WHERE code = '" + couponCode + "' AND active = true";
+const coupon = await db.raw(query);
+\`\`\`
+
+#### ✅ Remediación con Consultas Parametrizadas (Prepared Statements):
+\`\`\`ts
+// En Node.js (pg / node-postgres / MySQL2):
+const coupon = await db.query(
+  'SELECT * FROM coupons WHERE code = $1 AND active = true',
+  [couponCode]
+);
+\`\`\`
+
+#### Recomendación de Arquitectura:
+1. Implementar un ORM / Query Builder tipado (**Prisma**, **Drizzle** o **Kysely**) que aplique binding automático de variables.
+2. Aplicar el principio de mínimo privilegio en el usuario de base de datos utilizado por la API (evitar roles \`SUPERUSER\` o \`db_owner\`).`;
+  }
+
+  if (query.includes('jwt') || query.includes('token') || query.includes('cwe-345') || query.includes('auth')) {
+    return `### Hardening de Autenticación JWT & Gestión de Sesiones — LYAXIS Architect
+
+El error crítico de invocar \`jwt.decode()\` en lugar de \`jwt.verify()\` permite que cualquier atacante altere el payload en Base64 sin que el backend verifique la firma criptográfica ni la expiración.
+
+#### ✅ Implementación Criptográfica Segura:
+\`\`\`ts
+import jwt from 'jsonwebtoken';
+
+export function verifySessionToken(token: string) {
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET as string, {
+      algorithms: ['HS256'],
+      issuer: 'auth.lyaxis.com',
+      maxAge: '2h' // TTL corto para mitigar robo de tokens
+    });
+  } catch (err) {
+    throw new Error('Token inválido, expirado o firma manipulada');
+  }
+}
+\`\`\`
+
+#### Estrategia de Transporte:
+- Almacena los tokens en cookies con banderas \`HttpOnly\`, \`Secure\` y \`SameSite=Lax\` para neutralizar ataques XSS.`;
+  }
+
+  if (query.includes('csp') || query.includes('cabecera') || query.includes('header') || query.includes('hsts') || query.includes('x-frame')) {
+    return `### Estrategia de Inmunidad Perimetral (Security Headers) — LYAXIS Architect
+
+Para blindar la aplicación frente a ataques XSS, Clickjacking y degradación de protocolo SSL:
+
+#### 1. Cabeceras Canónicas en Vercel (\`vercel.json\`):
+\`\`\`json
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https:; frame-ancestors 'none';" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+#### Impacto en Producción:
+- **0% riesgo de rotura**: no altera bases de datos ni lógica de servidor.
+- Eleva el score de seguridad de Aegis Engine de inmediato en +25 puntos.`;
+  }
+
+  if (query.includes('lcp') || query.includes('inp') || query.includes('cls') || query.includes('vitals') || query.includes('rendimiento') || query.includes('performance') || query.includes('velocidad')) {
+    return `### Guía Maestra de Optimización Core Web Vitals — LYAXIS Architect
+
+Estrategia de 3 capas para alcanzar puntuaciones superiores a 90/100 en rendimiento:
+
+1. **Largest Contentful Paint (LCP < 2.5s):**
+   - Precargar la imagen Hero principal: \`<link rel="preload" as="image" href="/hero.webp" fetchpriority="high">\`.
+   - Utilizar formatos modernos WebP o AVIF con compresión del 80%.
+   - Cachear assets con \`Cache-Control: public, max-age=31536000, immutable\`.
+
+2. **Interaction to Next Paint (INP < 200ms):**
+   - Eliminar bucles bloqueantes síncronos en el hilo principal.
+   - Descomponer cálculos pesados con \`scheduler.yield()\` o Web Workers.
+
+3. **Cumulative Layout Shift (CLS < 0.1):**
+   - Asignar siempre atributos \`width\` y \`height\` explícitos a imágenes y banners para reservar su espacio en el DOM antes de descargarse.`;
+  }
+
+  if (query.includes('cache') || query.includes('caching') || query.includes('redis')) {
+    return `### Patrón Cache-Aside con Redis & Invalidación Reactiva — LYAXIS Architect
+
+Para soportar picos de alta concurrencia (>50,000 req/min) sin saturar PostgreSQL/MySQL:
+
+\`\`\`ts
+// Patrón Cache-Aside con TTL Dinámico
+export async function getCatalogItem(id: string) {
+  const cacheKey = \`item:\${id}\`;
+  const cached = await redis.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  const fresh = await db.query('SELECT * FROM catalog WHERE id = $1', [id]);
+  if (fresh.rows.length > 0) {
+    // TTL de 300 segundos con reconexión resiliente
+    await redis.setex(cacheKey, 300, JSON.stringify(fresh.rows[0]));
+    return fresh.rows[0];
+  }
+  return null;
+}
+\`\`\`
+
+#### Beneficio:
+Reduce la carga de la base de datos en un 82% y estabiliza latencias p99 en <45ms.`;
+  }
+
+  if (query.includes('memoria') || query.includes('leak') || query.includes('useeffect')) {
+    return `### Prevención de Fugas de Memoria en React — LYAXIS Architect
+
+Las fugas de memoria más frecuentes en SPAs provienen de oyentes o intervalos no limpiados al desmontar componentes:
+
+#### ❌ Código con Fuga:
+\`\`\`tsx
+useEffect(() => {
+  const timer = setInterval(fetchUpdates, 1000);
+  // Falta cleanup
+}, []);
+\`\`\`
+
+#### ✅ Remediación:
+\`\`\`tsx
+useEffect(() => {
+  const timer = setInterval(fetchUpdates, 1000);
+  return () => {
+    clearInterval(timer); // Se ejecuta al desmontar el componente
+  };
+}, []);
+\`\`\``;
+  }
+
   return `### Asesoría Estratégica — LYAXIS Architect
 
 Como estratega de implementación de **LYAXIS LABS**, puedo orientarte en:
@@ -227,6 +375,7 @@ Como estratega de implementación de **LYAXIS LABS**, puedo orientarte en:
 2. **Compatibilidad Multiplataforma:** Snippets exactos para Next.js, WordPress, Nginx, Apache, Cloudflare o Vercel.
 3. **Optimización de Core Web Vitals:** Estrategias para bajar LCP de 3.4s a menos de 1.8s.
 4. **Resiliencia & Caching:** Patrones Cache-Aside con Redis y Circuit Breakers.
+5. **Mitigación de Vulnerabilidades:** Remediaciones contra SQLi (CWE-89), JWT bypass (CWE-345) y cabeceras CSP.
 
 ¿Qué aspecto te gustaría abordar primero?`;
 }

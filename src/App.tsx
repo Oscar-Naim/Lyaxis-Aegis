@@ -29,6 +29,7 @@ export default function App() {
 
   // Resolved / Applied issues tracker
   const [resolvedIssueIds, setResolvedIssueIds] = useState<Set<string>>(new Set());
+  const [selectedRemediationIssueId, setSelectedRemediationIssueId] = useState<string | undefined>(undefined);
   const [simulatedGains, setSimulatedGains] = useState<{ security: number; performance: number; privacySeo: number }>({
     security: 0,
     performance: 0,
@@ -61,6 +62,7 @@ export default function App() {
 
       setCurrentScan(data);
       setResolvedIssueIds(new Set());
+      setSelectedRemediationIssueId(undefined);
       setSimulatedGains({ security: 0, performance: 0, privacySeo: 0 });
 
       // Update CI/CD simulation state based on scan
@@ -100,7 +102,7 @@ export default function App() {
     setResolvedIssueIds(prev => new Set([...prev, issueId]));
 
     setSimulatedGains(prev => ({
-      security: isSecurity ? prev.security: prev.security + (isSecurity ? impact : 0),
+      security: isSecurity ? prev.security + impact : prev.security,
       performance: isPerformance ? prev.performance + impact : prev.performance,
       privacySeo: isPrivacySeo ? prev.privacySeo + impact : prev.privacySeo,
     }));
@@ -116,6 +118,7 @@ export default function App() {
 
   // Select issue and navigate to Remediation Diff tab
   const handleSelectIssueForRemediation = (issue: SecurityIssue | PerformanceIssue) => {
+    setSelectedRemediationIssueId(issue.id);
     setActiveTab('remediation');
   };
 
@@ -220,6 +223,7 @@ export default function App() {
             currentScan={currentScan}
             onApplyFix={handleApplyFix}
             onAskCopilot={handleAskCopilot}
+            selectedIssueId={selectedRemediationIssueId}
             resolvedIssueIds={resolvedIssueIds}
           />
         )}

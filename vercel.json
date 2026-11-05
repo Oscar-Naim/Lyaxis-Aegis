@@ -18,8 +18,20 @@
       "destination": "/api/architect"
     },
     {
+      "source": "/api/chat",
+      "destination": "/api/architect"
+    },
+    {
       "source": "/api/pipeline",
       "destination": "/api/pipeline"
+    },
+    {
+      "source": "/api/pipeline/simulate",
+      "destination": "/api/pipeline"
+    },
+    {
+      "source": "/api/github/info",
+      "destination": "/api/scan"
     },
     {
       "source": "/((?!api/).*)",

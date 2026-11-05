@@ -11,7 +11,8 @@ import {
   Zap, 
   Share2, 
   Clock, 
-  GitPullRequest 
+  GitPullRequest,
+  Sparkles 
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -149,6 +150,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             <GitPullRequest className="w-3.5 h-3.5" />
             <span>CI/CD</span>
           </button>
+
+          <button
+            onClick={() => onTabChange('chat')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+              activeTab === 'chat'
+                ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+            <span>Copilot</span>
+          </button>
         </nav>
 
         {/* Right Action Switchers & Modals */}
@@ -251,6 +264,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`px-2.5 py-1 rounded whitespace-nowrap ${activeTab === 'pipeline' ? 'text-cyan-300 font-semibold bg-cyan-950/40' : 'text-slate-400'}`}
         >
           CI/CD
+        </button>
+        <button
+          onClick={() => onTabChange('chat')}
+          className={`px-2.5 py-1 rounded whitespace-nowrap ${activeTab === 'chat' ? 'text-violet-300 font-semibold bg-violet-950/40' : 'text-slate-400'}`}
+        >
+          Copilot
         </button>
       </div>
     </header>

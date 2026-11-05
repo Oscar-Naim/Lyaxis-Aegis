@@ -13,12 +13,17 @@ export interface DiffResult {
   deletions: number;
 }
 
+function splitLines(text: string): string[] {
+  if (!text || text.length === 0) return [];
+  return text.split(/\r?\n/);
+}
+
 /**
  * Computes Myers LCS diff between two text blocks
  */
 export function computeMyersDiff(originalText: string, newText: string): DiffResult {
-  const origLines = originalText.split(/\r?\n/);
-  const newLines = newText.split(/\r?\n/);
+  const origLines = splitLines(originalText);
+  const newLines = splitLines(newText);
 
   const n = origLines.length;
   const m = newLines.length;

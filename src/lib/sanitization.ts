@@ -21,8 +21,10 @@ export function scrubSecretsLocally(inputCode: string): SanitizationReport {
   const redactedList: string[] = [];
 
   for (const item of PATTERNS) {
+    item.regex.lastIndex = 0;
     if (item.regex.test(clean)) {
       redactedList.push(item.name);
+      item.regex.lastIndex = 0;
       clean = clean.replace(item.regex, (match) => {
         count++;
         if (match.includes(':') || match.includes('=')) {
@@ -31,6 +33,7 @@ export function scrubSecretsLocally(inputCode: string): SanitizationReport {
         }
         return '[VAULT_PROTECTED_KEY_******]';
       });
+      item.regex.lastIndex = 0;
     }
   }
 

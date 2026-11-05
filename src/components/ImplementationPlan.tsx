@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Cpu, 
   Layers, 
@@ -32,6 +32,12 @@ export const ImplementationPlan: React.FC<ImplementationPlanProps> = ({
   const [isLoadingPlatform, setIsLoadingPlatform] = useState(false);
   const [copiedStep, setCopiedStep] = useState<number | null>(null);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (currentScan.masterPlan) {
+      setSteps(currentScan.masterPlan);
+    }
+  }, [currentScan]);
 
   const handlePlatformChange = async (
     plat: 'WordPress' | 'Next.js' | 'React' | 'Nginx' | 'Apache' | 'Cloudflare' | 'Vercel'

@@ -91,7 +91,7 @@ app.post('/api/chat', (req, res) => {
 });
 
 // CI/CD Pipeline Simulator endpoint
-app.post('/api/pipeline/simulate', (req, res) => {
+app.post(['/api/pipeline', '/api/pipeline/simulate'], (req, res) => {
   const { branch = 'main', commitHash = '7a29e4f', author = 'dev-team@lyaxis.com', threshold = 'critical' } = req.body;
   const passed = threshold === 'permissive';
 

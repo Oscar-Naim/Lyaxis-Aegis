@@ -22,8 +22,10 @@ export function sanitizeCredentials(code: string): SanitizeResult {
   const typesDetected: Set<string> = new Set();
 
   for (const item of SECRET_PATTERNS) {
+    item.regex.lastIndex = 0;
     if (item.regex.test(sanitized)) {
       typesDetected.add(item.name);
+      item.regex.lastIndex = 0;
       sanitized = sanitized.replace(item.regex, (match) => {
         foundCount++;
         if (match.includes(':') || match.includes('=')) {
@@ -32,6 +34,7 @@ export function sanitizeCredentials(code: string): SanitizeResult {
         }
         return '[PROTECTED_BY_AEGIS_VAULT_******]';
       });
+      item.regex.lastIndex = 0;
     }
   }
 

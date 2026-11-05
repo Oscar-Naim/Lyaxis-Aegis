@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Share2, 
   Copy, 
@@ -28,6 +28,12 @@ export const SocialCardSimulator: React.FC<SocialCardSimulatorProps> = ({
   const [description, setDescription] = useState(initialData.ogDescription || 'Solución web de alto rendimiento y arquitectura moderna.');
   const [imageUrl, setImageUrl] = useState(initialData.ogImage || 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1200&h=630&fit=crop');
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setTitle(initialData.ogTitle || `${targetName} — Plataforma Digital`);
+    setDescription(initialData.ogDescription || 'Solución web de alto rendimiento y arquitectura moderna.');
+    setImageUrl(initialData.ogImage || 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1200&h=630&fit=crop');
+  }, [initialData, targetName]);
 
   const generatedHtml = `<!-- LYAXIS AEGIS Optimized Social Meta Tags -->
 <meta property="og:type" content="website" />

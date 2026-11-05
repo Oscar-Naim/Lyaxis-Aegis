@@ -22,6 +22,51 @@ interface HackerDevViewProps {
   resolvedIssueIds: Set<string>;
 }
 
+const SERVER_CONFIGS: Record<'vercel' | 'nginx' | 'cloudflare' | 'apache', string> = {
+  vercel: `// vercel.json — Cabeceras de Inmunidad y Calidad
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https:; object-src 'none';" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+      ]
+    }
+  ]
+}`,
+  nginx: `# /etc/nginx/conf.d/security.conf
+# LYAXIS Aegis Hardening Directive
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https:; object-src 'none';" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+add_header X-Frame-Options "DENY" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+# Gzip / Brotli Fast Compression
+gzip on;
+gzip_types text/plain text/css application/json application/javascript text/xml;`,
+  cloudflare: `# Cloudflare Ruleset / Response Headers Transform Rule
+# Regla 1: Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https:; object-src 'none';"
+# Regla 2: Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+# Regla 3: X-Frame-Options = "DENY"
+# Regla 4: X-Content-Type-Options = "nosniff"
+# Regla 5: Referrer-Policy = "strict-origin-when-cross-origin"`,
+  apache: `# .htaccess / httpd.conf
+<IfModule mod_headers.c>
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https:;"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+  Header always set X-Frame-Options "DENY"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>`
+};
+
 export const HackerDevView: React.FC<HackerDevViewProps> = ({
   currentScan,
   onApplyFix,
@@ -235,52 +280,11 @@ export const HackerDevView: React.FC<HackerDevViewProps> = ({
         {/* Server Snippet Content */}
         <div className="relative">
           <pre className="p-4 rounded-xl bg-slate-950 border border-white/[0.06] text-slate-200 text-xs overflow-x-auto leading-relaxed">
-            {activeServerTab === 'vercel' && `// vercel.json — Cabeceras de Inmunidad y Calidad
-{
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https:; object-src 'none';" },
-        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
-      ]
-    }
-  ]
-}`}
-            {activeServerTab === 'nginx' && `# /etc/nginx/conf.d/security.conf
-# LYAXIS Aegis Hardening Directive
-add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https:; object-src 'none';" always;
-add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-add_header X-Frame-Options "DENY" always;
-add_header X-Content-Type-Options "nosniff" always;
-add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-
-# Gzip / Brotli Fast Compression
-gzip on;
-gzip_types text/plain text/css application/json application/javascript text/xml;`}
-            {activeServerTab === 'cloudflare' && `# Cloudflare Ruleset / Response Headers Transform Rule
-# Regla 1: Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https:; object-src 'none';"
-# Regla 2: Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
-# Regla 3: X-Frame-Options = "DENY"
-# Regla 4: X-Content-Type-Options = "nosniff"
-# Regla 5: Referrer-Policy = "strict-origin-when-cross-origin"`}
-            {activeServerTab === 'apache' && `# .htaccess / httpd.conf
-<IfModule mod_headers.c>
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https:;"
-  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-  Header always set X-Frame-Options "DENY"
-  Header always set X-Content-Type-Options "nosniff"
-  Header always set Referrer-Policy "strict-origin-when-cross-origin"
-</IfModule>`}
+            {SERVER_CONFIGS[activeServerTab]}
           </pre>
 
           <button
-            onClick={() => handleCopy('server-tab', activeServerTab === 'vercel' ? 'vercel.json' : 'server-config')}
+            onClick={() => handleCopy('server-tab', SERVER_CONFIGS[activeServerTab])}
             className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 text-slate-300 hover:text-white text-[11px] transition-colors"
           >
             {copiedKey === 'server-tab' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
