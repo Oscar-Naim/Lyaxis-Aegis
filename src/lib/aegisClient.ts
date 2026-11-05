@@ -14,7 +14,8 @@ export async function requestAegisScan(payload: {
   });
 
   if (!res.ok) {
-    throw new Error(`Aegis Engine falló con estado HTTP ${res.status}`);
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.error || `Aegis Engine falló con estado HTTP ${res.status}`);
   }
 
   return await res.json();

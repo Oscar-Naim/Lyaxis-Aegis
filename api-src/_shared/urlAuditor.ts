@@ -27,12 +27,40 @@ export interface UrlAuditFindings {
   };
 }
 
+function isPrivateAddress(address: string): boolean {
+  if (net.isIP(address) === 4) {
+    const [a, b] = address.split('.').map(Number);
+    return a === 10 || a === 127 || a === 0 || a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && b === 168;
+  }
+  const normalized = address.toLowerCase();
+  return normalized === '::1' || normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:') || normalized.startsWith('::ffff:127.');
+}
+
+export async function validateExternalTarget(rawUrl: string): Promise<URL> {
+  const normalized = /^https?:\/\//i.test(rawUrl.trim()) ? rawUrl.trim() : `https://${rawUrl.trim()}`;
+  let url: URL;
+  try {
+    url = new URL(normalized);
+  } catch {
+    throw new Error('La URL no es válida.');
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('Solo se permiten URLs HTTP(S) públicas sin credenciales.');
+  }
+  if (url.hostname === 'localhost' || net.isIP(url.hostname) && isPrivateAddress(url.hostname)) {
+    throw new Error('No se permiten destinos locales o privados.');
+  }
+  const addresses = await lookup(url.hostname, { all: true });
+  if (!addresses.length || addresses.some(entry => isPrivateAddress(entry.address))) {
+    throw new Error('La URL resuelve a una dirección no pública.');
+  }
+  return url;
+}
+
 export async function auditLiveUrl(targetUrl: string): Promise<UrlAuditFindings> {
   const startTime = Date.now();
-  let normalizedUrl = targetUrl.trim();
-  if (!/^https?:\/\//i.test(normalizedUrl)) {
-    normalizedUrl = `https://${normalizedUrl}`;
-  }
+  let activeUrl = await validateExternalTarget(targetUrl);
+  let normalizedUrl = activeUrl.toString();
 
   const missingSecurityHeaders: string[] = [];
   const presentSecurityHeaders: string[] = [];
@@ -47,15 +75,25 @@ export async function auditLiveUrl(targetUrl: string): Promise<UrlAuditFindings>
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch(normalizedUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) LYAXIS-Aegis/2.0 (Forensic Auditor; +https://lyaxis.com/aegis)',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      signal: controller.signal,
-    });
+    let res: Response | undefined;
+    for (let redirects = 0; redirects <= 3; redirects++) {
+      res = await fetch(activeUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'LYAXIS-Aegis/3.0 passive-auditor',
+          'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+        },
+        signal: controller.signal,
+      });
+      if (![301, 302, 303, 307, 308].includes(res.status)) break;
+      const location = res.headers.get('location');
+      if (!location) break;
+      activeUrl = await validateExternalTarget(new URL(location, activeUrl).toString());
+      normalizedUrl = activeUrl.toString();
+    }
     clearTimeout(timeout);
+    if (!res) throw new Error('No se recibió respuesta del destino.');
 
     responseTimeMs = Date.now() - startTime;
     statusCode = res.status;
@@ -175,3 +213,6 @@ export async function auditLiveUrl(targetUrl: string): Promise<UrlAuditFindings>
     },
   };
 }
+import { lookup } from 'node:dns/promises';
+import net from 'node:net';
+

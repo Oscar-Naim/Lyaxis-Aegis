@@ -8,7 +8,8 @@
     "build": "vite build && esbuild api-src/scan.ts api-src/architect.ts api-src/pipeline.ts --bundle --platform=node --format=esm --target=node20 --outdir=api",
     "start": "tsx server.ts",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -19,6 +20,7 @@
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-router-dom": "^7.18.5",
     "vite": "^6.0.7"
   },
   "devDependencies": {
@@ -28,6 +30,7 @@
     "@types/react-dom": "^19.0.0",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.7"
   }
 }

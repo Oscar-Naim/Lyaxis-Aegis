@@ -1,313 +1,114 @@
-import React, { useState } from 'react';
-import { Navbar } from './components/Navbar.tsx';
-import { MissionControlHero } from './components/MissionControlHero.tsx';
-import { RadialHUDGauges } from './components/RadialHUDGauges.tsx';
-import { HumanModeView } from './components/HumanModeView.tsx';
-import { HackerDevView } from './components/HackerDevView.tsx';
-import { RemediationViewer } from './components/RemediationViewer.tsx';
-import { AnalyticsDashboard } from './components/AnalyticsDashboard.tsx';
-import { ImplementationPlan } from './components/ImplementationPlan.tsx';
-import { SocialCardSimulator } from './components/SocialCardSimulator.tsx';
-import { SentinelAutomation } from './components/SentinelAutomation.tsx';
-import { PipelineIntegration } from './components/PipelineIntegration.tsx';
-import { ArchitectureChatbot } from './components/ArchitectureChatbot.tsx';
-import { SecurityVaultModal } from './components/SecurityVaultModal.tsx';
-import { CertificationBadgeModal } from './components/CertificationBadgeModal.tsx';
-import { ExecutiveReportView } from './components/ExecutiveReportView.tsx';
+import React, { useMemo, useState } from 'react';
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import {
+  AlertTriangle, ArrowRight, Check, CheckCircle2, Clipboard, Code2, FileDown,
+  FileText, FolderKanban, Github, Globe2, Menu, Play, Plus, Printer, ShieldCheck,
+  SlidersHorizontal, Terminal, Trash2, WandSparkles,
+} from 'lucide-react';
+import type { AuditHistoryEntry, AuditSourceType, Finding, LocalStoreV1, PolicyConfig, Project, ReviewStatus } from './core/models.ts';
+import { DEFAULT_POLICY } from './core/models.ts';
+import { auditFromScan, projectFromScan } from './core/auditAdapter.ts';
+import { downloadPatch, downloadText, reportHtml, workflowFor } from './core/exports.ts';
+import { evaluatePolicy } from './core/policy.ts';
+import { deleteProject, loadStore, saveAudit, updateAudit } from './core/storage.ts';
+import { requestAegisScan } from './lib/aegisClient.ts';
 
-import { INITIAL_SCAN_RESULT, INITIAL_PIPELINE_RUN } from './data/mockData.ts';
-import { ScanResult, PipelineRun, SecurityIssue, PerformanceIssue } from './types/index.ts';
-import { requestAegisScan, simulatePipelineRun } from './lib/aegisClient.ts';
+const navItems = [
+  { href: '/proyectos', label: 'Proyectos', icon: FolderKanban },
+  { href: '/auditar', label: 'Auditar', icon: ShieldCheck },
+];
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('scanner');
-  const [isHumanMode, setIsHumanMode] = useState<boolean>(true);
-  const [currentScan, setCurrentScan] = useState<ScanResult>(INITIAL_SCAN_RESULT);
-  const [pipelineRun, setPipelineRun] = useState<PipelineRun>(INITIAL_PIPELINE_RUN);
-  const [isScanning, setIsScanning] = useState<boolean>(false);
-  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+const severityStyle: Record<string, string> = {
+  critical: 'bg-rose-500/15 text-rose-200 border-rose-400/30', high: 'bg-amber-500/15 text-amber-200 border-amber-400/30',
+  medium: 'bg-cyan-500/15 text-cyan-200 border-cyan-400/30', low: 'bg-slate-500/15 text-slate-200 border-slate-400/30', info: 'bg-slate-500/15 text-slate-200 border-slate-400/30',
+};
 
-  // Resolved / Applied issues tracker
-  const [resolvedIssueIds, setResolvedIssueIds] = useState<Set<string>>(new Set());
-  const [selectedRemediationIssueId, setSelectedRemediationIssueId] = useState<string | undefined>(undefined);
-  const [simulatedGains, setSimulatedGains] = useState<{ security: number; performance: number; privacySeo: number }>({
-    security: 0,
-    performance: 0,
-    privacySeo: 0,
-  });
-
-  // Modals & Chat Prompts
-  const [isVaultOpen, setIsVaultOpen] = useState(false);
-  const [isBadgeOpen, setIsBadgeOpen] = useState(false);
-  const [isReportOpen, setIsReportOpen] = useState(false);
-  const [chatPrompt, setChatPrompt] = useState<string | undefined>(undefined);
-  const [notification, setNotification] = useState<string | null>(null);
-
-  const showNotification = (msg: string) => {
-    setNotification(msg);
-    setTimeout(() => setNotification(null), 3500);
-  };
-
-  // Run Forensic Scan via Aegis Engine
-  const handleRunScan = async (target: string, sourceCode?: string, typeHint?: 'url' | 'github' | 'code') => {
-    setIsScanning(true);
-    try {
-      const data = await requestAegisScan({
-        targetName: target,
-        targetUrl: typeHint === 'url' ? target : undefined,
-        githubUrl: typeHint === 'github' ? target : undefined,
-        sourceCode,
-        targetTypeHint: typeHint,
-      });
-
-      setCurrentScan(data);
-      setResolvedIssueIds(new Set());
-      setSelectedRemediationIssueId(undefined);
-      setSimulatedGains({ security: 0, performance: 0, privacySeo: 0 });
-
-      // Update CI/CD simulation state based on scan
-      const criticalCount = data.issues.filter(i => i.severity === 'critical').length;
-      setPipelineRun(prev => ({
-        ...prev,
-        status: criticalCount === 0 ? 'success' : 'failed',
-        summary: {
-          criticalCount,
-          highCount: data.issues.filter(i => i.severity === 'high').length,
-          perfScore: data.performanceScore,
-          gatePassed: criticalCount === 0,
-        }
-      }));
-
-      showNotification(`Auditoría Aegis finalizada para ${data.targetName}. Score: ${data.overallScore}/100`);
-    } catch (err: any) {
-      console.error(err);
-      showNotification('Aviso: auditoría ejecutada con motor heurístico de alta fidelidad.');
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
-  // Apply Remediation Fix & Recalculate Score Live
-  const handleApplyFix = (issueId: string) => {
-    if (resolvedIssueIds.has(issueId)) return;
-
-    const allIssues = [...currentScan.issues, ...currentScan.performanceIssues];
-    const target = allIssues.find(i => i.id === issueId);
-    const impact = target ? (target as any).estimatedScoreImpact || 10 : 10;
-
-    const isSecurity = target?.id.startsWith('SEC');
-    const isPerformance = target?.id.startsWith('PERF');
-    const isPrivacySeo = target?.id.startsWith('SEO') || target?.id.startsWith('A11Y');
-
-    setResolvedIssueIds(prev => new Set([...prev, issueId]));
-
-    setSimulatedGains(prev => ({
-      security: isSecurity ? prev.security + impact : prev.security,
-      performance: isPerformance ? prev.performance + impact : prev.performance,
-      privacySeo: isPrivacySeo ? prev.privacySeo + impact : prev.privacySeo,
-    }));
-
-    showNotification(`Parche aplicado exitosamente para ${issueId}. Velocímetros HUD recalculados.`);
-  };
-
-  const handleResetSimulation = () => {
-    setResolvedIssueIds(new Set());
-    setSimulatedGains({ security: 0, performance: 0, privacySeo: 0 });
-    showNotification('Simulación What-If restablecida a valores base.');
-  };
-
-  // Select issue and navigate to Remediation Diff tab
-  const handleSelectIssueForRemediation = (issue: SecurityIssue | PerformanceIssue) => {
-    setSelectedRemediationIssueId(issue.id);
-    setActiveTab('remediation');
-  };
-
-  // Ask LYAXIS Architect Copilot
-  const handleAskCopilot = (topic: string, details?: string) => {
-    const prompt = details
-      ? `¿Cómo solucionar y qué consideraciones arquitectónicas tener en cuenta sobre "${topic}"?\nDetalle técnico:\n${details}`
-      : `Explícame en detalle cómo resolver y prevenir "${topic}" en producción.`;
-    setChatPrompt(prompt);
-    setActiveTab('chat');
-  };
-
-  // Simulate CI/CD run
-  const handleSimulateRun = async (threshold: 'critical' | 'strict' | 'permissive') => {
-    setIsSimulating(true);
-    try {
-      const data = await simulatePipelineRun(threshold);
-      setPipelineRun(data);
-      showNotification(`Simulación CI/CD finalizada: ${data.status === 'success' ? 'Compuerta Aprobada' : 'Compuerta Bloqueada'}`);
-    } catch (err) {
-      console.error(err);
-      showNotification('Error al simular pipeline');
-    } finally {
-      setIsSimulating(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-[#05070B] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Toast Notification */}
-      {notification && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl obsidian-glass border border-cyan-500/60 shadow-2xl shadow-cyan-950/60 text-xs text-cyan-200 flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-          <span>{notification}</span>
-        </div>
-      )}
-
-      {/* Navigation Header */}
-      <Navbar
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        isHumanMode={isHumanMode}
-        onToggleHumanMode={() => setIsHumanMode(!isHumanMode)}
-        onOpenVault={() => setIsVaultOpen(true)}
-        onOpenBadge={() => setIsBadgeOpen(true)}
-        onExportReport={() => setIsReportOpen(true)}
-        isScanning={isScanning}
-      />
-
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-8">
-        {/* Mission Control Hero (Visible on Scanner Tab) */}
-        {activeTab === 'scanner' && (
-          <MissionControlHero
-            onRunScan={handleRunScan}
-            isScanning={isScanning}
-            targetName={currentScan.targetName}
-          />
-        )}
-
-        {/* 3 Radial HUD Speedometers with Live What-If Simulator */}
-        <RadialHUDGauges
-          currentScan={currentScan}
-          simulatedGains={simulatedGains}
-          appliedIssuesCount={resolvedIssueIds.size}
-          onResetSimulation={handleResetSimulation}
-        />
-
-        {/* Tab 1: Scanner View (Human vs Hacker/Dev mode) */}
-        {activeTab === 'scanner' && (
-          <div>
-            {isHumanMode ? (
-              <HumanModeView
-                currentScan={currentScan}
-                onApplyFix={handleApplyFix}
-                onSelectIssueForRemediation={handleSelectIssueForRemediation}
-                resolvedIssueIds={resolvedIssueIds}
-              />
-            ) : (
-              <HackerDevView
-                currentScan={currentScan}
-                onApplyFix={handleApplyFix}
-                onSelectIssueForRemediation={handleSelectIssueForRemediation}
-                resolvedIssueIds={resolvedIssueIds}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Tab 2: Analytics & Vitals */}
-        {activeTab === 'analytics' && (
-          <AnalyticsDashboard
-            currentScan={currentScan}
-            onSelectIssue={handleSelectIssueForRemediation}
-            onAskCopilot={handleAskCopilot}
-          />
-        )}
-
-        {/* Tab 3: Remediation & Myers Diff */}
-        {activeTab === 'remediation' && (
-          <RemediationViewer
-            currentScan={currentScan}
-            onApplyFix={handleApplyFix}
-            onAskCopilot={handleAskCopilot}
-            selectedIssueId={selectedRemediationIssueId}
-            resolvedIssueIds={resolvedIssueIds}
-          />
-        )}
-
-        {/* Tab 4: LYAXIS Architect Master Plan */}
-        {activeTab === 'architect' && (
-          <ImplementationPlan
-            currentScan={currentScan}
-            onSelectStepForRemediation={() => setActiveTab('remediation')}
-          />
-        )}
-
-        {/* Tab 5: Social Card Simulator */}
-        {activeTab === 'social' && (
-          <SocialCardSimulator
-            initialData={currentScan.socialCardData}
-            targetName={currentScan.targetName}
-          />
-        )}
-
-        {/* Tab 6: Sentinel Automation */}
-        {activeTab === 'sentinel' && (
-          <SentinelAutomation
-            targetName={currentScan.targetName}
-          />
-        )}
-
-        {/* Tab 7: CI/CD Pipeline Gate */}
-        {activeTab === 'pipeline' && (
-          <PipelineIntegration
-            currentScan={currentScan}
-            pipelineRun={pipelineRun}
-            onSimulateRun={handleSimulateRun}
-            isSimulating={isSimulating}
-          />
-        )}
-
-        {/* Tab 8: LYAXIS Architect Copilot */}
-        {activeTab === 'chat' && (
-          <ArchitectureChatbot
-            currentScan={currentScan}
-            initialPrompt={chatPrompt}
-            onClearInitialPrompt={() => setChatPrompt(undefined)}
-          />
-        )}
-      </main>
-
-      {/* Modals */}
-      <SecurityVaultModal
-        isOpen={isVaultOpen}
-        onClose={() => setIsVaultOpen(false)}
-      />
-
-      <CertificationBadgeModal
-        isOpen={isBadgeOpen}
-        onClose={() => setIsBadgeOpen(false)}
-        overallScore={currentScan.overallScore}
-        targetName={currentScan.targetName}
-      />
-
-      {isReportOpen && (
-        <ExecutiveReportView
-          scan={currentScan}
-          onClose={() => setIsReportOpen(false)}
-        />
-      )}
-
-      {/* Quiet Brand Footer */}
-      <footer className="border-t border-white/[0.06] bg-[#05070B] py-8 text-center text-xs text-slate-500 no-print">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-white font-bold tracking-wide">LYAXIS AEGIS</span>
-            <span className="text-slate-600">&middot;</span>
-            <span>Iniciativa 100% gratuita y abierta de <strong className="text-slate-300">LYAXIS LABS</strong></span>
-          </div>
-          <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
-            <span>Aegis Engine</span>
-            <span>&middot;</span>
-            <span>LYAXIS Architect</span>
-            <span>&middot;</span>
-            <span>Obsidian Specular Glass</span>
-          </div>
-        </div>
-      </footer>
-    </div>
-  );
+function AppShell({ children }: { children: React.ReactNode }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  return <div className="min-h-screen bg-[#05070B] text-slate-100 selection:bg-cyan-400/30">
+    <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#05070B]/90 backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+      <Link to="/proyectos" className="flex items-center gap-3" aria-label="Ir a proyectos"><span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-400/35 bg-cyan-400/10 text-cyan-300"><ShieldCheck className="h-5 w-5" /></span><span><b className="tracking-wide text-white">LYAXIS <span className="text-cyan-300">AEGIS</span></b><small className="hidden sm:block text-[10px] text-slate-500">Auditoría local verificable</small></span></Link>
+      <nav className="hidden items-center gap-1 md:flex" aria-label="Principal">{navItems.map(({ href, label, icon: Icon }) => <NavLink key={href} href={href} label={label} icon={<Icon className="h-4 w-4" />} />)}</nav>
+      <button className="rounded-lg p-2 text-slate-300 md:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-expanded={mobileOpen} aria-label="Abrir navegación"><Menu className="h-5 w-5" /></button>
+    </div>{mobileOpen && <nav className="border-t border-white/[0.06] px-4 py-2 md:hidden">{navItems.map(({ href, label, icon: Icon }) => <NavLink key={href} href={href} label={label} icon={<Icon className="h-4 w-4" />} />)}</nav>}</header>
+    <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6">{children}</main>
+  </div>;
 }
+
+function NavLink({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) { return <Link to={href} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-white/[0.06] hover:text-white">{icon}{label}</Link>; }
+
+function Layout({ store, setStore }: { store: LocalStoreV1; setStore: React.Dispatch<React.SetStateAction<LocalStoreV1>> }) {
+  return <AppShell><Routes>
+    <Route path="/proyectos" element={<ProjectsPage store={store} setStore={setStore} />} />
+    <Route path="/auditar" element={<AuditPage store={store} setStore={setStore} />} />
+    <Route path="/resultados/:auditId" element={<ResultsPage store={store} />} />
+    <Route path="/remediar/:auditId" element={<RemediationPage store={store} setStore={setStore} />} />
+    <Route path="/automatizar/:auditId" element={<AutomationPage store={store} />} />
+    <Route path="/reportes/:auditId" element={<ReportsPage store={store} />} />
+    <Route path="*" element={<Navigate to="/proyectos" replace />} />
+  </Routes></AppShell>;
+}
+
+function ProjectsPage({ store, setStore }: { store: LocalStoreV1; setStore: React.Dispatch<React.SetStateAction<LocalStoreV1>> }) {
+  const auditsByProject = useMemo(() => new Map(store.audits.map(audit => [audit.id, audit])), [store.audits]);
+  const remove = (projectId: string) => { if (window.confirm('¿Eliminar este proyecto y su historial local?')) setStore(deleteProject(projectId)); };
+  return <section className="space-y-7"><PageHeading eyebrow="ESPACIO LOCAL" title="Proyectos y auditorías" description="Los resultados se almacenan únicamente en este navegador. Nunca se guardan credenciales." action={<Link className="primary-button" to="/auditar"><Plus className="h-4 w-4" />Nueva auditoría</Link>} />
+    {store.projects.length === 0 ? <EmptyState title="Aún no hay proyectos" body="Inicia una auditoría de código, un repositorio público o una URL para crear el primer historial local." action="Auditar ahora" /> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{store.projects.map(project => {
+      const audit = project.latestAuditId ? auditsByProject.get(project.latestAuditId) : undefined;
+      return <article key={project.id} className="surface-card space-y-4 p-5"><div className="flex items-start justify-between gap-3"><div><span className="label">{sourceLabel(project.sourceType)}</span><h2 className="mt-1 text-lg font-bold text-white">{project.name}</h2><p className="mt-1 truncate text-xs text-slate-500">{project.sourceReference || 'Código local'}</p></div><button className="icon-button text-slate-500 hover:text-rose-300" title="Eliminar proyecto" onClick={() => remove(project.id)}><Trash2 className="h-4 w-4" /></button></div>
+      {audit ? <><div className="flex items-end justify-between"><span className="text-3xl font-black text-cyan-300">{audit.score.overall}<small className="text-sm text-slate-500">/100</small></span><span className="text-xs text-slate-400">{audit.findings.length} hallazgo(s)</span></div><p className="text-xs text-slate-500">Última auditoría: {formatDate(audit.timestamp)}</p><Link className="secondary-button w-full justify-center" to={`/resultados/${audit.id}`}>Ver resultados<ArrowRight className="h-4 w-4" /></Link></> : <Link className="secondary-button w-full justify-center" to="/auditar">Auditar proyecto</Link>}</article>;
+    })}</div>}
+    <p className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-xs text-slate-400"><ShieldCheck className="mr-2 inline h-4 w-4 text-emerald-300" />Los secretos detectados se redactan antes de persistir los resultados.</p>
+  </section>;
+}
+
+function AuditPage({ store, setStore }: { store: LocalStoreV1; setStore: React.Dispatch<React.SetStateAction<LocalStoreV1>> }) {
+  const navigate = useNavigate(); const [sourceType, setSourceType] = useState<AuditSourceType>('code'); const [target, setTarget] = useState(''); const [code, setCode] = useState(''); const [policy, setPolicy] = useState<PolicyConfig>(store.policies[0] || DEFAULT_POLICY); const [loading, setLoading] = useState(false); const [error, setError] = useState<string | null>(null);
+  const run = async (event: React.FormEvent) => { event.preventDefault(); setError(null); if (sourceType === 'code' && !code.trim()) return setError('Pega código para iniciar una auditoría estática.'); if (sourceType !== 'code' && !target.trim()) return setError('Indica una URL o un repositorio público.'); setLoading(true); try {
+    const scan = await requestAegisScan({ targetName: sourceType === 'code' ? target.trim() || 'Código pegado' : target.trim(), targetUrl: sourceType === 'url' ? target.trim() : undefined, githubUrl: sourceType === 'github_public' ? target.trim() : undefined, sourceCode: sourceType === 'code' ? code : undefined, targetTypeHint: sourceType === 'github_public' ? 'github' : sourceType });
+    const project = projectFromScan(scan); const audit = auditFromScan(scan, project.id, policy); setStore(saveAudit(project, audit)); navigate(`/resultados/${audit.id}`);
+  } catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible completar la auditoría.'); } finally { setLoading(false); } };
+  return <section className="space-y-7"><PageHeading eyebrow="NUEVA AUDITORÍA" title="Analiza evidencia, no simulaciones" description="Código y repositorios públicos se revisan estáticamente. Las URL reciben una auditoría externa, pasiva y protegida contra SSRF." />
+    <form onSubmit={run} className="grid gap-6 lg:grid-cols-[1fr_320px]"><div className="surface-card p-5 sm:p-7"><fieldset><legend className="text-sm font-semibold text-white">Fuente de auditoría</legend><div className="mt-3 grid gap-2 sm:grid-cols-3">{([['code', 'Código pegado', Code2], ['github_public', 'GitHub público', Github], ['url', 'URL pública', Globe2]] as const).map(([id, label, Icon]) => <label key={id} className={`cursor-pointer rounded-xl border p-3 text-sm transition ${sourceType === id ? 'border-cyan-400/50 bg-cyan-400/10 text-cyan-100' : 'border-white/[0.08] text-slate-400 hover:bg-white/[0.03]'}`}><input className="sr-only" type="radio" name="source" value={id} checked={sourceType === id} onChange={() => setSourceType(id)} /><Icon className="mb-2 h-4 w-4 text-cyan-300" />{label}</label>)}</div></fieldset>
+      <div className="mt-6 space-y-3">{sourceType === 'code' ? <><label className="field-label" htmlFor="audit-name">Nombre opcional</label><input id="audit-name" className="field" value={target} onChange={event => setTarget(event.target.value)} placeholder="Ej. Checkout API" /><label className="field-label" htmlFor="audit-code">Código fuente</label><textarea id="audit-code" className="field min-h-80 font-mono text-xs" value={code} onChange={event => setCode(event.target.value)} placeholder="Pega JavaScript, TypeScript, HTML o configuración aquí." /></> : <><label className="field-label" htmlFor="audit-target">{sourceType === 'url' ? 'URL pública' : 'Repositorio GitHub público'}</label><input id="audit-target" className="field" value={target} onChange={event => setTarget(event.target.value)} placeholder={sourceType === 'url' ? 'https://ejemplo.com' : 'https://github.com/owner/repo'} /><p className="text-xs leading-relaxed text-slate-500">{sourceType === 'url' ? 'Bloqueamos IPs privadas, localhost y destinos internos. No se realizan pruebas intrusivas.' : 'Solo se analizan archivos públicos, de texto y dentro de límites de tamaño.'}</p></>}</div>
+      {error && <p role="alert" className="mt-4 rounded-lg border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</p>}<button disabled={loading} className="primary-button mt-6 w-full justify-center disabled:cursor-wait disabled:opacity-60">{loading ? 'Auditando…' : 'Ejecutar auditoría'}<Play className="h-4 w-4" /></button></div>
+      <aside className="surface-card h-fit p-5"><div className="flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-violet-300" /><h2 className="font-semibold text-white">Política de calidad</h2></div><p className="mt-2 text-xs leading-relaxed text-slate-400">Se guardará junto al resultado y será la misma política exportada a CI.</p><label className="field-label mt-5" htmlFor="fail-on">Severidad de bloqueo</label><select id="fail-on" className="field" value={policy.failOn} onChange={event => setPolicy({ ...policy, failOn: event.target.value as PolicyConfig['failOn'] })}><option value="critical">Crítica</option><option value="high">Alta</option><option value="medium">Media</option></select><label className="field-label mt-4" htmlFor="max-high">Máximo de altas</label><input id="max-high" className="field" type="number" min="0" value={policy.thresholds.maxHigh} onChange={event => setPolicy({ ...policy, thresholds: { ...policy.thresholds, maxHigh: Number(event.target.value) } })} /><label className="field-label mt-4" htmlFor="min-score">Puntaje mínimo</label><input id="min-score" className="field" type="number" min="0" max="100" value={policy.thresholds.minimumOverallScore} onChange={event => setPolicy({ ...policy, thresholds: { ...policy.thresholds, minimumOverallScore: Number(event.target.value) } })} /></aside>
+    </form></section>;
+}
+
+function ResultsPage({ store }: { store: LocalStoreV1 }) { const audit = useAudit(store); if (!audit) return <MissingAudit />; const evaluation = evaluatePolicy(audit.findings, audit.score.overall, audit.policy); return <section className="space-y-7"><PageHeading eyebrow="RESULTADO DE AUDITORÍA" title={audit.source.displayName} description={`Ejecutada ${formatDate(audit.timestamp)} · ${audit.durationMs} ms`} action={<AuditActions audit={audit} />} />
+  <div className="grid gap-4 md:grid-cols-4"><ScoreCard label="Puntaje general" value={`${audit.score.overall}/100`} accent="text-cyan-300" /><ScoreCard label="Seguridad" value={`${audit.score.security}/100`} accent="text-emerald-300" /><ScoreCard label="Rendimiento" value={`${audit.score.performance}/100`} accent="text-violet-300" /><div className={`surface-card p-5 ${evaluation.passed ? 'border-emerald-400/25' : 'border-rose-400/25'}`}><span className="label">Política</span><strong className={`mt-2 block text-lg ${evaluation.passed ? 'text-emerald-300' : 'text-rose-300'}`}>{evaluation.passed ? 'Aprobada' : 'Requiere atención'}</strong><p className="mt-1 text-xs text-slate-400">{evaluation.passed ? 'Dentro de los umbrales elegidos.' : evaluation.reasons.join(' · ')}</p></div></div>
+  <div className="grid gap-6 lg:grid-cols-[1fr_300px]"><div className="space-y-3"><div className="flex items-end justify-between"><div><h2 className="text-lg font-bold text-white">Hallazgos</h2><p className="text-sm text-slate-400">Confirmados con evidencia o recomendaciones marcadas explícitamente.</p></div><span className="text-xs text-slate-500">{audit.findings.length} resultados</span></div>{audit.findings.length ? audit.findings.map(finding => <FindingCard key={finding.id} finding={finding} />) : <EmptyState title="No se detectaron reglas activadas" body="Esto no equivale a una garantía de seguridad; revisa las limitaciones de alcance." />}</div><aside className="surface-card h-fit p-5"><h2 className="font-semibold text-white">Alcance y límites</h2><ul className="mt-3 space-y-2 text-xs leading-relaxed text-slate-400">{audit.scope.checks.map(check => <li key={check}>• {check}</li>)}</ul><hr className="my-4 border-white/[0.07]" /><h3 className="text-sm font-semibold text-white">Limitaciones</h3><ul className="mt-2 space-y-2 text-xs leading-relaxed text-slate-500">{audit.limitations.map(item => <li key={item}>• {item}</li>)}</ul></aside></div></section>; }
+
+function FindingCard({ finding }: { finding: Finding }) { return <article className="surface-card overflow-hidden"><div className="flex flex-wrap items-start justify-between gap-3 p-5"><div><div className="flex flex-wrap gap-2"><Badge value={finding.severity} /><span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${finding.kind === 'confirmed' ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-violet-400/30 bg-violet-400/10 text-violet-200'}`}>{finding.kind === 'confirmed' ? 'Confirmado' : 'Recomendación'}</span><span className="text-[11px] text-slate-500">Confianza {finding.confidence}</span></div><h3 className="mt-3 font-semibold text-white">{finding.title}</h3><p className="mt-1 text-sm leading-relaxed text-slate-400">{finding.summary}</p></div><span className="rounded-lg bg-white/[0.04] px-2 py-1 text-xs text-slate-400">{reviewLabel(finding.reviewStatus)}</span></div><details className="border-t border-white/[0.07] px-5 py-3"><summary className="cursor-pointer text-sm font-medium text-cyan-200">Ver evidencia técnica</summary><div className="mt-4 space-y-3 text-xs text-slate-300"><p>{finding.technicalDetail}</p>{finding.standards && <p className="text-slate-500">{finding.standards.cwe && `CWE: ${finding.standards.cwe}`} {finding.standards.owasp && ` · OWASP: ${finding.standards.owasp}`}</p>}{finding.evidence.map((evidence, index) => <pre key={index} className="overflow-x-auto rounded-lg border border-white/[0.07] bg-black/30 p-3 font-mono text-[11px] whitespace-pre-wrap"><b>{evidence.label}</b>{evidence.file && ` · ${evidence.file}${evidence.startLine ? `:${evidence.startLine}` : ''}`}\n{evidence.value}</pre>)}</div></details></article>; }
+
+function RemediationPage({ store, setStore }: { store: LocalStoreV1; setStore: React.Dispatch<React.SetStateAction<LocalStoreV1>> }) {
+  const audit = useAudit(store); const [selectedId, setSelectedId] = useState<string | undefined>(); if (!audit) return <MissingAudit />; const selected = audit.findings.find(item => item.id === selectedId) || audit.findings[0]; const updateFinding = (status: ReviewStatus, note?: string) => { if (!selected) return; const next = { ...audit, findings: audit.findings.map(item => item.id === selected.id ? { ...item, reviewStatus: status, reviewNote: note, reviewedAt: new Date().toISOString() } : item) }; setStore(updateAudit(next)); };
+  return <section className="space-y-7"><PageHeading eyebrow="REMEDIACIÓN MANUAL" title="Trata los hallazgos de forma verificable" description="Los cambios nunca se aplican solos ni modifican el puntaje registrado." action={<Link className="secondary-button" to={`/resultados/${audit.id}`}>Ver resultados</Link>} />
+  {!selected ? <EmptyState title="No hay remediaciones disponibles" body="Ejecuta una auditoría con hallazgos para continuar." /> : <div className="grid gap-6 lg:grid-cols-[310px_1fr]"><aside className="space-y-2">{audit.findings.map(finding => <button key={finding.id} onClick={() => setSelectedId(finding.id)} className={`w-full rounded-xl border p-3 text-left transition ${selected.id === finding.id ? 'border-cyan-400/45 bg-cyan-400/10' : 'border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]'}`}><div className="flex justify-between gap-2"><Badge value={finding.severity} /><span className="text-[10px] text-slate-500">{reviewLabel(finding.reviewStatus)}</span></div><span className="mt-2 block text-sm font-medium text-white">{finding.title}</span></button>)}</aside><article className="surface-card p-5 sm:p-7"><div className="flex flex-wrap justify-between gap-4"><div><Badge value={selected.severity} /><h2 className="mt-3 text-xl font-bold text-white">{selected.title}</h2><p className="mt-2 text-sm text-slate-400">{selected.remediation.explanation}</p></div><StatusSelect finding={selected} onChange={updateFinding} /></div><div className="mt-7 grid gap-6 xl:grid-cols-2"><div><h3 className="font-semibold text-white">Guía de implementación</h3><ol className="mt-3 space-y-3">{selected.remediation.plainChecklist.map((item, index) => <li key={item.id} className="flex gap-3 text-sm text-slate-300"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-cyan-400/25 text-xs text-cyan-200">{index + 1}</span><span>{item.label}<small className="block text-slate-500">{item.detail}</small></span></li>)}</ol></div><div><h3 className="font-semibold text-white">Validación</h3><div className="mt-3 rounded-xl border border-white/[0.07] bg-black/20 p-4 text-sm text-slate-300">{selected.remediation.verificationCommands.length ? selected.remediation.verificationCommands.map(command => <p key={command}>{command}</p>) : <p>Revisa el cambio en un entorno seguro antes de marcarlo como resuelto.</p>}</div><ReviewNote finding={selected} onSave={note => updateFinding(selected.reviewStatus, note)} /></div></div><DiffSection finding={selected} /></article></div>}</section>;
+}
+
+function StatusSelect({ finding, onChange }: { finding: Finding; onChange: (status: ReviewStatus) => void }) { return <label className="text-xs text-slate-400">Estado local<select className="field mt-1 min-w-40" value={finding.reviewStatus} onChange={event => onChange(event.target.value as ReviewStatus)}><option value="open">Abierto</option><option value="reviewed">Revisado</option><option value="resolved">Resuelto</option><option value="risk_accepted">Riesgo aceptado</option></select></label>; }
+function ReviewNote({ finding, onSave }: { finding: Finding; onSave: (note: string) => void }) { const [note, setNote] = useState(finding.reviewNote || ''); return <div className="mt-4"><label className="field-label" htmlFor="review-note">Nota local</label><textarea id="review-note" className="field mt-1 min-h-24 text-sm" value={note} onChange={event => setNote(event.target.value)} placeholder="Decisión, responsable o evidencia de verificación." /><button className="secondary-button mt-2" onClick={() => onSave(note)}><Check className="h-4 w-4" />Guardar nota</button></div>; }
+function DiffSection({ finding }: { finding: Finding }) { const [copied, setCopied] = useState(false); const code = finding.remediation.remediatedSnippet; const copy = async () => { if (!code) return; await navigator.clipboard.writeText(code); setCopied(true); window.setTimeout(() => setCopied(false), 1800); }; return <div className="mt-7 border-t border-white/[0.07] pt-6"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-white">Cambio técnico</h3><div className="flex gap-2">{code && <button className="secondary-button" onClick={copy}>{copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}{copied ? 'Copiado' : 'Copiar snippet'}</button>}{finding.remediation.patch?.canDownload && <button className="secondary-button" onClick={() => downloadPatch(finding)}><FileDown className="h-4 w-4" />Descargar .patch</button>}</div></div>{finding.remediation.originalSnippet && <div className="mt-4 grid gap-3 xl:grid-cols-2"><CodeBlock label="Original" code={finding.remediation.originalSnippet} tone="rose" /><CodeBlock label="Propuesta" code={code || ''} tone="emerald" /></div>}{!finding.remediation.patch?.canDownload && <p className="mt-3 text-xs text-slate-500">No se ofrece un patch descargable porque esta auditoría no tiene un archivo de repositorio verificable.</p>}</div>; }
+
+function AutomationPage({ store }: { store: LocalStoreV1 }) { const audit = useAudit(store); const [kind, setKind] = useState<'github' | 'gitlab' | 'precommit'>('github'); if (!audit) return <MissingAudit />; const yaml = workflowFor(kind, audit.policy); const evaluation = evaluatePolicy(audit.findings, audit.score.overall, audit.policy); return <section className="space-y-7"><PageHeading eyebrow="AUTOMATIZACIÓN EXPORTABLE" title="Lleva la política a tu repositorio" description="Generamos archivos reales. AEGIS no simula pipelines, cron ni alertas." />
+  <div className="grid gap-6 lg:grid-cols-[1fr_300px]"><article className="surface-card p-5 sm:p-7"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-2">{(['github', 'gitlab', 'precommit'] as const).map(value => <button key={value} className={`rounded-lg px-3 py-2 text-xs font-semibold ${kind === value ? 'bg-cyan-400/15 text-cyan-200' : 'text-slate-400 hover:bg-white/[0.05]'}`} onClick={() => setKind(value)}>{value === 'github' ? 'GitHub Actions' : value === 'gitlab' ? 'GitLab CI' : 'pre-commit'}</button>)}</div><button className="secondary-button" onClick={() => downloadText(kind === 'github' ? 'lyaxis-aegis.yml' : kind === 'gitlab' ? '.gitlab-ci.yml' : 'pre-commit', yaml)}><FileDown className="h-4 w-4" />Descargar</button></div><CodeBlock label={kind === 'github' ? '.github/workflows/lyaxis-aegis.yml' : kind === 'gitlab' ? '.gitlab-ci.yml' : '.husky/pre-commit'} code={yaml} tone="slate" /><p className="mt-4 text-xs leading-relaxed text-slate-500">El flujo presupone el ejecutable <code>lyaxis-aegis</code> para producir <code>aegis-result.json</code> y evaluar los umbrales incluidos. La interfaz no afirma haber ejecutado este archivo.</p></article><aside className="surface-card h-fit p-5"><span className="label">POLÍTICA EXPORTADA</span><h2 className="mt-2 text-lg font-bold text-white">{audit.policy.name}</h2><dl className="mt-4 space-y-2 text-sm"><div className="flex justify-between"><dt className="text-slate-500">Críticas</dt><dd>{audit.policy.thresholds.maxCritical}</dd></div><div className="flex justify-between"><dt className="text-slate-500">Altas</dt><dd>{audit.policy.thresholds.maxHigh}</dd></div><div className="flex justify-between"><dt className="text-slate-500">Puntaje mín.</dt><dd>{audit.policy.thresholds.minimumOverallScore}</dd></div></dl><p className={`mt-5 rounded-lg p-3 text-xs ${evaluation.passed ? 'bg-emerald-400/10 text-emerald-200' : 'bg-rose-400/10 text-rose-200'}`}>{evaluation.passed ? 'La auditoría seleccionada cumple esta política.' : `La auditoría seleccionada no cumpliría: ${evaluation.reasons.join(', ')}`}</p></aside></div></section>; }
+
+function ReportsPage({ store }: { store: LocalStoreV1 }) { const audit = useAudit(store); if (!audit) return <MissingAudit />; const html = reportHtml(audit); return <section className="space-y-7"><PageHeading eyebrow="INFORME COMPARTIBLE" title="Informe ejecutivo local" description="Incluye alcance, evidencia, severidad, estado de tratamiento y limitaciones." action={<div className="flex gap-2"><button className="secondary-button" onClick={() => downloadText(`aegis-${audit.id}.html`, html, 'text/html;charset=utf-8')}><FileDown className="h-4 w-4" />HTML</button><button className="primary-button" onClick={() => window.print()}><Printer className="h-4 w-4" />Guardar PDF</button></div>} />
+  <article className="print-report rounded-2xl border border-white/[0.08] bg-white p-6 text-slate-900 sm:p-10"><small className="font-mono text-slate-500">LYAXIS AEGIS · INFORME LOCAL</small><h1 className="mt-2 text-3xl font-black">{audit.source.displayName}</h1><p className="mt-2 text-sm text-slate-600">{formatDate(audit.timestamp)} · Alcance: {audit.scope.checks.join(', ')}</p><div className="my-7 grid gap-3 sm:grid-cols-3"><ReportStat label="Puntaje" value={`${audit.score.overall}/100`} /><ReportStat label="Hallazgos" value={String(audit.findings.length)} /><ReportStat label="Confirmados" value={String(audit.findings.filter(item => item.kind === 'confirmed').length)} /></div><h2 className="text-xl font-bold">Hallazgos</h2><div className="mt-3 space-y-3">{audit.findings.map(finding => <div key={finding.id} className="rounded-xl border border-slate-200 p-4"><p className="text-xs font-bold uppercase text-slate-500">{finding.severity} · {finding.kind} · {finding.confidence}</p><h3 className="mt-1 font-bold">{finding.title}</h3><p className="mt-1 text-sm text-slate-600">{finding.summary}</p><p className="mt-2 text-xs"><b>Evidencia:</b> {finding.evidence.map(item => item.value).join(' | ')}</p><p className="mt-1 text-xs"><b>Estado:</b> {reviewLabel(finding.reviewStatus)}{finding.reviewNote && ` — ${finding.reviewNote}`}</p></div>)}</div><h2 className="mt-7 text-xl font-bold">Limitaciones</h2><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">{audit.limitations.map(item => <li key={item}>{item}</li>)}</ul></article></section>; }
+
+function useAudit(store: LocalStoreV1): AuditHistoryEntry | undefined { const { auditId } = useParams(); return store.audits.find(audit => audit.id === auditId); }
+function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: React.ReactNode }) { return <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><span className="label">{eyebrow}</span><h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">{title}</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">{description}</p></div>{action}</div>; }
+function ScoreCard({ label, value, accent }: { label: string; value: string; accent: string }) { return <div className="surface-card p-5"><span className="label">{label}</span><strong className={`mt-2 block text-2xl font-black ${accent}`}>{value}</strong></div>; }
+function Badge({ value }: { value: string }) { return <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${severityStyle[value] || severityStyle.info}`}>{value}</span>; }
+function CodeBlock({ label, code, tone }: { label: string; code: string; tone: 'rose' | 'emerald' | 'slate' }) { const color = tone === 'rose' ? 'border-rose-400/25' : tone === 'emerald' ? 'border-emerald-400/25' : 'border-white/[0.08]'; return <div className={`mt-4 overflow-hidden rounded-xl border ${color} bg-black/30`}><p className="border-b border-white/[0.07] px-3 py-2 text-xs font-semibold text-slate-400">{label}</p><pre className="max-h-96 overflow-auto p-4 text-xs leading-relaxed text-slate-200">{code}</pre></div>; }
+function EmptyState({ title, body, action }: { title: string; body: string; action?: string }) { return <div className="surface-card p-10 text-center"><WandSparkles className="mx-auto h-6 w-6 text-cyan-300" /><h2 className="mt-3 font-bold text-white">{title}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-400">{body}</p>{action && <Link className="primary-button mt-5" to="/auditar">{action}</Link>}</div>; }
+function MissingAudit() { return <EmptyState title="No encontramos esta auditoría" body="Es posible que se haya eliminado el historial local o que el enlace sea inválido." action="Ir a auditorías" />; }
+function AuditActions({ audit }: { audit: AuditHistoryEntry }) { return <div className="flex flex-wrap gap-2"><Link className="secondary-button" to={`/remediar/${audit.id}`}><CheckCircle2 className="h-4 w-4" />Remediar</Link><Link className="secondary-button" to={`/automatizar/${audit.id}`}><Terminal className="h-4 w-4" />Automatizar</Link><Link className="primary-button" to={`/reportes/${audit.id}`}><FileText className="h-4 w-4" />Informe</Link></div>; }
+function ReportStat({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-slate-200 p-4"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><strong className="mt-1 block text-2xl">{value}</strong></div>; }
+function sourceLabel(type: AuditSourceType): string { return type === 'github_public' ? 'GITHUB PÚBLICO' : type === 'url' ? 'URL PASIVA' : 'CÓDIGO PEGADO'; }
+function reviewLabel(status: ReviewStatus): string { return ({ open: 'Abierto', reviewed: 'Revisado', resolved: 'Resuelto', risk_accepted: 'Riesgo aceptado' } as const)[status]; }
+function formatDate(value: string): string { return new Date(value).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }); }
+
+export default function App() { const [store, setStore] = useState<LocalStoreV1>(() => loadStore()); return <BrowserRouter><Layout store={store} setStore={setStore} /></BrowserRouter>; }

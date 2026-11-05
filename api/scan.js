@@ -1,10 +1,38 @@
 // api-src/_shared/urlAuditor.ts
+import { lookup } from "node:dns/promises";
+import net from "node:net";
+function isPrivateAddress(address) {
+  if (net.isIP(address) === 4) {
+    const [a, b] = address.split(".").map(Number);
+    return a === 10 || a === 127 || a === 0 || a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && b === 168;
+  }
+  const normalized = address.toLowerCase();
+  return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:") || normalized.startsWith("::ffff:127.");
+}
+async function validateExternalTarget(rawUrl) {
+  const normalized = /^https?:\/\//i.test(rawUrl.trim()) ? rawUrl.trim() : `https://${rawUrl.trim()}`;
+  let url;
+  try {
+    url = new URL(normalized);
+  } catch {
+    throw new Error("La URL no es v\xE1lida.");
+  }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+    throw new Error("Solo se permiten URLs HTTP(S) p\xFAblicas sin credenciales.");
+  }
+  if (url.hostname === "localhost" || net.isIP(url.hostname) && isPrivateAddress(url.hostname)) {
+    throw new Error("No se permiten destinos locales o privados.");
+  }
+  const addresses = await lookup(url.hostname, { all: true });
+  if (!addresses.length || addresses.some((entry) => isPrivateAddress(entry.address))) {
+    throw new Error("La URL resuelve a una direcci\xF3n no p\xFAblica.");
+  }
+  return url;
+}
 async function auditLiveUrl(targetUrl) {
   const startTime = Date.now();
-  let normalizedUrl = targetUrl.trim();
-  if (!/^https?:\/\//i.test(normalizedUrl)) {
-    normalizedUrl = `https://${normalizedUrl}`;
-  }
+  let activeUrl = await validateExternalTarget(targetUrl);
+  let normalizedUrl = activeUrl.toString();
   const missingSecurityHeaders = [];
   const presentSecurityHeaders = [];
   const headersMap = {};
@@ -15,15 +43,25 @@ async function auditLiveUrl(targetUrl) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8e3);
-    const res = await fetch(normalizedUrl, {
-      method: "GET",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LYAXIS-Aegis/2.0 (Forensic Auditor; +https://lyaxis.com/aegis)",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-      },
-      signal: controller.signal
-    });
+    let res;
+    for (let redirects = 0; redirects <= 3; redirects++) {
+      res = await fetch(activeUrl, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+          "User-Agent": "LYAXIS-Aegis/3.0 passive-auditor",
+          "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
+        },
+        signal: controller.signal
+      });
+      if (![301, 302, 303, 307, 308].includes(res.status)) break;
+      const location = res.headers.get("location");
+      if (!location) break;
+      activeUrl = await validateExternalTarget(new URL(location, activeUrl).toString());
+      normalizedUrl = activeUrl.toString();
+    }
     clearTimeout(timeout);
+    if (!res) throw new Error("No se recibi\xF3 respuesta del destino.");
     responseTimeMs = Date.now() - startTime;
     statusCode = res.status;
     res.headers.forEach((val, key) => {
@@ -153,19 +191,7 @@ async function fetchRepoMetadata(owner, repo) {
         "Accept": "application/vnd.github.v3+json"
       }
     });
-    if (!res.ok) {
-      return {
-        owner,
-        repo,
-        fullName: `${owner}/${repo}`,
-        description: `Repositorio p\xFAblico GitHub (${owner}/${repo})`,
-        defaultBranch: "main",
-        stars: 0,
-        openIssues: 0,
-        language: "Web / TypeScript / JavaScript",
-        htmlUrl: `https://github.com/${owner}/${repo}`
-      };
-    }
+    if (!res.ok) return null;
     const data = await res.json();
     return {
       owner: data.owner?.login || owner,
@@ -178,18 +204,8 @@ async function fetchRepoMetadata(owner, repo) {
       language: data.language || "TypeScript",
       htmlUrl: data.html_url || `https://github.com/${owner}/${repo}`
     };
-  } catch (err) {
-    return {
-      owner,
-      repo,
-      fullName: `${owner}/${repo}`,
-      description: `Repositorio inspeccionado (${owner}/${repo})`,
-      defaultBranch: "main",
-      stars: 0,
-      openIssues: 0,
-      language: "JavaScript / TypeScript",
-      htmlUrl: `https://github.com/${owner}/${repo}`
-    };
+  } catch {
+    return null;
   }
 }
 async function fetchRawFile(owner, repo, branch, path) {
@@ -326,10 +342,12 @@ async function runAegisForensicScan(params) {
   let repoDetails = void 0;
   let urlFindings = null;
   if (targetType === "github") {
-    const repoInfo = parsedRepo || parseGitHubUrl(rawInput) || { owner: "lyaxis", repo: "web-app", branch: "main" };
+    const repoInfo = parsedRepo || parseGitHubUrl(rawInput);
+    if (!repoInfo) throw new Error("Repositorio de GitHub p\xFAblico inv\xE1lido.");
     targetName = `${repoInfo.owner}/${repoInfo.repo}`;
     targetUrl = `https://github.com/${repoInfo.owner}/${repoInfo.repo}`;
     const meta = await fetchRepoMetadata(repoInfo.owner, repoInfo.repo);
+    if (!meta) throw new Error("No fue posible acceder al repositorio p\xFAblico de GitHub.");
     const branch = repoInfo.branch || meta?.defaultBranch || "main";
     const { files, filePaths } = await fetchRepoKeyFiles(repoInfo.owner, repoInfo.repo, branch);
     repoDetails = {
@@ -497,7 +515,7 @@ add_header X-Content-Type-Options "nosniff" always;`,
   const hasCorsWildcard = /['"]Access-Control-Allow-Origin['"]\s*:\s*['"]\*['"]/i.test(code) || /res\.header\s*\(\s*['"]Access-Control-Allow-Origin['"],\s*['"]\*['"]\)/i.test(code);
   const hasDangerouslySetHtml = /dangerouslySetInnerHTML/i.test(code);
   const hasEval = /eval\s*\(/i.test(code);
-  if (hasSqlConcat || targetType !== "url" && issues.length === 0) {
+  if (hasSqlConcat) {
     issues.push({
       id: "SEC-104",
       title: "Inyecci\xF3n SQL Cr\xEDtica por Concatenaci\xF3n de Par\xE1metros Din\xE1micos",
@@ -534,7 +552,7 @@ const coupon = await db.query(
       estimatedScoreImpact: 16
     });
   }
-  if (hasJwtDecode || targetType !== "url" && issues.length < 2) {
+  if (hasJwtDecode) {
     issues.push({
       id: "SEC-105",
       title: "Falsificaci\xF3n de Identidad: Uso Inseguro de jwt.decode sin Validar Firma",
@@ -629,37 +647,9 @@ const coupon = await db.query(
       estimatedScoreImpact: 10
     });
   }
-  if (issues.length === 0) {
-    issues.push({
-      id: "SEC-101",
-      title: "Ausencia de Pol\xEDtica Estricta de Cabeceras de Inmunidad Perimetral (CSP & HSTS)",
-      severity: "high",
-      category: "security",
-      cwe: "CWE-1021",
-      cvss: 7.8,
-      owaspTop10: "A05:2021-Security Misconfiguration",
-      fileLocation: "Capa Perimetral / Servidor Web",
-      lineRange: "Response Headers",
-      description: "El host no emite directivas completas de protecci\xF3n perimetral, dejando margen para inyecci\xF3n de scripts y clickjacking.",
-      plainSpanishExplanation: "Tu servidor no tiene reglas expl\xEDcitas para impedir que otras p\xE1ginas carguen scripts o muestren tu web en iframes ocultos.",
-      plainSpanishFix: "Configura las cabeceras CSP, HSTS y X-Frame-Options en tu servidor o CDN.",
-      impact: "Riesgo residual de inyecciones y suplantaci\xF3n de interfaz.",
-      vulnerableSnippet: `// Cabeceras de protecci\xF3n ausentes o incompletas`,
-      remediation: {
-        explanation: "Inyectar cabeceras est\xE1ndar de inmunidad en la capa de CDN o servidor web.",
-        originalSnippet: `// Sin pol\xEDtica CSP expl\xEDcita`,
-        remediatedSnippet: `Content-Security-Policy: default-src 'self'; frame-ancestors 'none';
-Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`,
-        diffSummary: `+ Content-Security-Policy: default-src 'self';
-+ Strict-Transport-Security: max-age=31536000`
-      },
-      status: "open",
-      estimatedScoreImpact: 12
-    });
-  }
   const hasBlockingLoop = /for\s*\(.*10000/i.test(code) || /Math\.sin/i.test(code);
   const hasUncleanedTimer = /setInterval/i.test(code) && !/clearInterval/i.test(code);
-  if (hasBlockingLoop || targetType !== "url") {
+  if (hasBlockingLoop) {
     performanceIssues.push({
       id: "PERF-201",
       title: "Bucle S\xEDncrono Bloqueante en Hilo Principal (Thread Starvation)",
@@ -684,7 +674,7 @@ const total = cartItems.reduce((acc, item) => acc + item.price, 0);`,
       estimatedScoreImpact: 12
     });
   }
-  if (hasUncleanedTimer || targetType !== "url" && performanceIssues.length < 2) {
+  if (hasUncleanedTimer) {
     performanceIssues.push({
       id: "PERF-202",
       title: "Fuga de Memoria por Intervalo Hu\xE9rfano en Hook React",
@@ -752,34 +742,12 @@ const total = cartItems.reduce((acc, item) => acc + item.price, 0);`,
       });
     }
   }
-  if (performanceIssues.length === 0) {
-    performanceIssues.push({
-      id: "PERF-205",
-      title: "Ausencia de Compresi\xF3n Brotli y Caching HTTP Inmutable (Core Web Vitals)",
-      severity: "medium",
-      type: "network-waterfall",
-      description: "Los recursos est\xE1ticos (CSS, JS, fuentes) no se sirven con compresi\xF3n Brotli ni cabeceras Cache-Control con directiva immutable y stale-while-revalidate.",
-      plainSpanishExplanation: "Tus archivos se descargan completos cada vez porque falta configurar la memoria cach\xE9 inteligente y la compresi\xF3n moderna en tu servidor.",
-      plainSpanishFix: "Activa la compresi\xF3n Brotli y a\xF1ade Cache-Control: public, max-age=31536000, immutable a los recursos est\xE1ticos.",
-      fileLocation: "Configuraci\xF3n Servidor Web / CDN",
-      impact: "Aumento de tiempos de carga en visitas recurrentes y mayor consumo de datos m\xF3viles.",
-      remediation: {
-        explanation: "Configurar compresi\xF3n Brotli y cabeceras de cach\xE9 inmutable para assets con hash.",
-        originalSnippet: `// Sin directivas de cach\xE9 optimizadas`,
-        remediatedSnippet: `Cache-Control: public, max-age=31536000, immutable
-Content-Encoding: br`,
-        diffSummary: `+ Cache-Control: public, max-age=31536000, immutable
-+ Content-Encoding: br`
-      },
-      estimatedScoreImpact: 8
-    });
-  }
   let ogTitle = urlFindings?.openGraph.title || `${targetName} \u2014 Plataforma Digital`;
   let ogDesc = urlFindings?.openGraph.description || "Soluci\xF3n web de alto rendimiento y arquitectura moderna.";
   let ogImg = urlFindings?.openGraph.image || "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1200&h=630&fit=crop";
   let twCard = urlFindings?.openGraph.card || "summary_large_image";
   const missingSocial = urlFindings?.missingSocialTags || [];
-  if (missingSocial.length > 0 || targetType !== "url" || !issues.some((i) => i.category === "social_seo")) {
+  if (missingSocial.length > 0) {
     issues.push({
       id: "SEO-301",
       title: "Ausencia o Incompletitud de Metadatos OpenGraph (WhatsApp / X / LinkedIn)",
@@ -806,8 +774,8 @@ Content-Encoding: br`,
       estimatedScoreImpact: 10
     });
   }
-  const missingAlt = urlFindings?.imagesAnalysis.missingAltCount ?? 3;
-  if (missingAlt > 0 || targetType !== "url" || !issues.some((i) => i.category === "accessibility_privacy")) {
+  const missingAlt = urlFindings?.imagesAnalysis.missingAltCount ?? 0;
+  if (missingAlt > 0) {
     issues.push({
       id: "A11Y-401",
       title: `${missingAlt} Elementos Gr\xE1ficos sin Etiqueta alt (Infracci\xF3n WCAG 2.1 AA)`,
@@ -831,7 +799,7 @@ Content-Encoding: br`,
       estimatedScoreImpact: 8
     });
   }
-  if (urlFindings?.cookiesAnalysis.hasInsecureCookies || targetType !== "url") {
+  if (urlFindings?.cookiesAnalysis.hasInsecureCookies) {
     issues.push({
       id: "A11Y-402",
       title: "Cookies de Sesi\xF3n sin Flags de Privacidad (SameSite=Strict / Secure / HttpOnly)",
@@ -1003,8 +971,8 @@ const result = await db.query('SELECT * FROM items WHERE code = $1', [inputCode]
   const criticalCount = issues.filter((i) => i.severity === "critical").length;
   const highCount = issues.filter((i) => i.severity === "high").length;
   const medCount = issues.filter((i) => i.severity === "medium").length;
-  const securityScore = Math.max(35, Math.min(88, 100 - (criticalCount * 22 + highCount * 12 + medCount * 5)));
-  const performanceScore = Math.max(40, Math.min(85, 100 - performanceIssues.length * 11));
+  const securityScore = Math.max(0, Math.min(100, 100 - (criticalCount * 22 + highCount * 12 + medCount * 5)));
+  const performanceScore = Math.max(0, Math.min(100, 100 - performanceIssues.length * 11));
   const socialSeoScore = missingSocial.length > 2 ? 55 : missingSocial.length > 0 ? 75 : 92;
   const privacyScore = issues.some((i) => i.category === "accessibility_privacy") ? 62 : 88;
   const overallScore = Math.round(securityScore * 0.35 + performanceScore * 0.3 + socialSeoScore * 0.15 + privacyScore * 0.2);

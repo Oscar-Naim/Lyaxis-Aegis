@@ -61,19 +61,7 @@ export async function fetchRepoMetadata(owner: string, repo: string): Promise<Re
       },
     });
 
-    if (!res.ok) {
-      return {
-        owner,
-        repo,
-        fullName: `${owner}/${repo}`,
-        description: `Repositorio público GitHub (${owner}/${repo})`,
-        defaultBranch: 'main',
-        stars: 0,
-        openIssues: 0,
-        language: 'Web / TypeScript / JavaScript',
-        htmlUrl: `https://github.com/${owner}/${repo}`,
-      };
-    }
+    if (!res.ok) return null;
 
     const data = await res.json();
     return {
@@ -87,18 +75,8 @@ export async function fetchRepoMetadata(owner: string, repo: string): Promise<Re
       language: data.language || 'TypeScript',
       htmlUrl: data.html_url || `https://github.com/${owner}/${repo}`,
     };
-  } catch (err) {
-    return {
-      owner,
-      repo,
-      fullName: `${owner}/${repo}`,
-      description: `Repositorio inspeccionado (${owner}/${repo})`,
-      defaultBranch: 'main',
-      stars: 0,
-      openIssues: 0,
-      language: 'JavaScript / TypeScript',
-      htmlUrl: `https://github.com/${owner}/${repo}`,
-    };
+  } catch {
+    return null;
   }
 }
 

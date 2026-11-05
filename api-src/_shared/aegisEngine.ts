@@ -34,11 +34,13 @@ export async function runAegisForensicScan(params: {
   let urlFindings: UrlAuditFindings | null = null;
 
   if (targetType === 'github') {
-    const repoInfo = parsedRepo || parseGitHubUrl(rawInput) || { owner: 'lyaxis', repo: 'web-app', branch: 'main' };
+    const repoInfo = parsedRepo || parseGitHubUrl(rawInput);
+    if (!repoInfo) throw new Error('Repositorio de GitHub público inválido.');
     targetName = `${repoInfo.owner}/${repoInfo.repo}`;
     targetUrl = `https://github.com/${repoInfo.owner}/${repoInfo.repo}`;
 
     const meta = await fetchRepoMetadata(repoInfo.owner, repoInfo.repo);
+    if (!meta) throw new Error('No fue posible acceder al repositorio público de GitHub.');
     const branch = repoInfo.branch || meta?.defaultBranch || 'main';
     const { files, filePaths } = await fetchRepoKeyFiles(repoInfo.owner, repoInfo.repo, branch);
 
@@ -216,7 +218,7 @@ export async function runAegisForensicScan(params: {
   const hasDangerouslySetHtml = /dangerouslySetInnerHTML/i.test(code);
   const hasEval = /eval\s*\(/i.test(code);
 
-  if (hasSqlConcat || (targetType !== 'url' && issues.length === 0)) {
+  if (hasSqlConcat) {
     issues.push({
       id: 'SEC-104',
       title: 'Inyección SQL Crítica por Concatenación de Parámetros Dinámicos',
@@ -244,7 +246,7 @@ export async function runAegisForensicScan(params: {
     });
   }
 
-  if (hasJwtDecode || (targetType !== 'url' && issues.length < 2)) {
+  if (hasJwtDecode) {
     issues.push({
       id: 'SEC-105',
       title: 'Falsificación de Identidad: Uso Inseguro de jwt.decode sin Validar Firma',
@@ -327,41 +329,13 @@ export async function runAegisForensicScan(params: {
     });
   }
 
-  // Guarantee Pillar 1 has at least 1 finding
-  if (issues.length === 0) {
-    issues.push({
-      id: 'SEC-101',
-      title: 'Ausencia de Política Estricta de Cabeceras de Inmunidad Perimetral (CSP & HSTS)',
-      severity: 'high',
-      category: 'security',
-      cwe: 'CWE-1021',
-      cvss: 7.8,
-      owaspTop10: 'A05:2021-Security Misconfiguration',
-      fileLocation: 'Capa Perimetral / Servidor Web',
-      lineRange: 'Response Headers',
-      description: 'El host no emite directivas completas de protección perimetral, dejando margen para inyección de scripts y clickjacking.',
-      plainSpanishExplanation: 'Tu servidor no tiene reglas explícitas para impedir que otras páginas carguen scripts o muestren tu web en iframes ocultos.',
-      plainSpanishFix: 'Configura las cabeceras CSP, HSTS y X-Frame-Options en tu servidor o CDN.',
-      impact: 'Riesgo residual de inyecciones y suplantación de interfaz.',
-      vulnerableSnippet: `// Cabeceras de protección ausentes o incompletas`,
-      remediation: {
-        explanation: 'Inyectar cabeceras estándar de inmunidad en la capa de CDN o servidor web.',
-        originalSnippet: `// Sin política CSP explícita`,
-        remediatedSnippet: `Content-Security-Policy: default-src 'self'; frame-ancestors 'none';\nStrict-Transport-Security: max-age=31536000; includeSubDomains; preload`,
-        diffSummary: `+ Content-Security-Policy: default-src 'self';\n+ Strict-Transport-Security: max-age=31536000`,
-      },
-      status: 'open',
-      estimatedScoreImpact: 12
-    });
-  }
-
   // -------------------------------------------------------------
   // PILLAR 2: 🟡 Rendimiento Extremo (Báscula de Megabytes)
   // -------------------------------------------------------------
   const hasBlockingLoop = /for\s*\(.*10000/i.test(code) || /Math\.sin/i.test(code);
   const hasUncleanedTimer = /setInterval/i.test(code) && !/clearInterval/i.test(code);
 
-  if (hasBlockingLoop || targetType !== 'url') {
+  if (hasBlockingLoop) {
     performanceIssues.push({
       id: 'PERF-201',
       title: 'Bucle Síncrono Bloqueante en Hilo Principal (Thread Starvation)',
@@ -382,7 +356,7 @@ export async function runAegisForensicScan(params: {
     });
   }
 
-  if (hasUncleanedTimer || (targetType !== 'url' && performanceIssues.length < 2)) {
+  if (hasUncleanedTimer) {
     performanceIssues.push({
       id: 'PERF-202',
       title: 'Fuga de Memoria por Intervalo Huérfano en Hook React',
@@ -448,28 +422,6 @@ export async function runAegisForensicScan(params: {
     }
   }
 
-  // Guarantee Pillar 2 (Performance) has at least 1 finding
-  if (performanceIssues.length === 0) {
-    performanceIssues.push({
-      id: 'PERF-205',
-      title: 'Ausencia de Compresión Brotli y Caching HTTP Inmutable (Core Web Vitals)',
-      severity: 'medium',
-      type: 'network-waterfall',
-      description: 'Los recursos estáticos (CSS, JS, fuentes) no se sirven con compresión Brotli ni cabeceras Cache-Control con directiva immutable y stale-while-revalidate.',
-      plainSpanishExplanation: 'Tus archivos se descargan completos cada vez porque falta configurar la memoria caché inteligente y la compresión moderna en tu servidor.',
-      plainSpanishFix: 'Activa la compresión Brotli y añade Cache-Control: public, max-age=31536000, immutable a los recursos estáticos.',
-      fileLocation: 'Configuración Servidor Web / CDN',
-      impact: 'Aumento de tiempos de carga en visitas recurrentes y mayor consumo de datos móviles.',
-      remediation: {
-        explanation: 'Configurar compresión Brotli y cabeceras de caché inmutable para assets con hash.',
-        originalSnippet: `// Sin directivas de caché optimizadas`,
-        remediatedSnippet: `Cache-Control: public, max-age=31536000, immutable\nContent-Encoding: br`,
-        diffSummary: `+ Cache-Control: public, max-age=31536000, immutable\n+ Content-Encoding: br`,
-      },
-      estimatedScoreImpact: 8
-    });
-  }
-
   // -------------------------------------------------------------
   // PILLAR 3: 🟣 Presencia Social & SEO Técnico
   // -------------------------------------------------------------
@@ -479,7 +431,7 @@ export async function runAegisForensicScan(params: {
   let twCard: 'summary_large_image' | 'summary' = (urlFindings?.openGraph.card as any) || 'summary_large_image';
   const missingSocial = urlFindings?.missingSocialTags || [];
 
-  if (missingSocial.length > 0 || targetType !== 'url' || !issues.some(i => i.category === 'social_seo')) {
+  if (missingSocial.length > 0) {
     issues.push({
       id: 'SEO-301',
       title: 'Ausencia o Incompletitud de Metadatos OpenGraph (WhatsApp / X / LinkedIn)',
@@ -507,8 +459,8 @@ export async function runAegisForensicScan(params: {
   // -------------------------------------------------------------
   // PILLAR 4: 🟢 Accesibilidad (a11y) & Privacidad
   // -------------------------------------------------------------
-  const missingAlt = urlFindings?.imagesAnalysis.missingAltCount ?? 3;
-  if (missingAlt > 0 || targetType !== 'url' || !issues.some(i => i.category === 'accessibility_privacy')) {
+  const missingAlt = urlFindings?.imagesAnalysis.missingAltCount ?? 0;
+  if (missingAlt > 0) {
     issues.push({
       id: 'A11Y-401',
       title: `${missingAlt} Elementos Gráficos sin Etiqueta alt (Infracción WCAG 2.1 AA)`,
@@ -533,7 +485,7 @@ export async function runAegisForensicScan(params: {
     });
   }
 
-  if (urlFindings?.cookiesAnalysis.hasInsecureCookies || targetType !== 'url') {
+  if (urlFindings?.cookiesAnalysis.hasInsecureCookies) {
     issues.push({
       id: 'A11Y-402',
       title: 'Cookies de Sesión sin Flags de Privacidad (SameSite=Strict / Secure / HttpOnly)',
@@ -715,8 +667,8 @@ export async function runAegisForensicScan(params: {
   const highCount = issues.filter(i => i.severity === 'high').length;
   const medCount = issues.filter(i => i.severity === 'medium').length;
 
-  const securityScore = Math.max(35, Math.min(88, 100 - (criticalCount * 22 + highCount * 12 + medCount * 5)));
-  const performanceScore = Math.max(40, Math.min(85, 100 - (performanceIssues.length * 11)));
+  const securityScore = Math.max(0, Math.min(100, 100 - (criticalCount * 22 + highCount * 12 + medCount * 5)));
+  const performanceScore = Math.max(0, Math.min(100, 100 - (performanceIssues.length * 11)));
   const socialSeoScore = missingSocial.length > 2 ? 55 : (missingSocial.length > 0 ? 75 : 92);
   const privacyScore = issues.some(i => i.category === 'accessibility_privacy') ? 62 : 88;
   const overallScore = Math.round((securityScore * 0.35) + (performanceScore * 0.30) + (socialSeoScore * 0.15) + (privacyScore * 0.20));
