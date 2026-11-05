@@ -1,4 +1,4 @@
-import { PipelineRun } from '../src/types/index.ts';
+import type { PipelineRun } from '../src/types/index.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');

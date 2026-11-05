@@ -1,4 +1,4 @@
-import { 
+import type { 
   ScanResult, 
   SecurityIssue, 
   PerformanceIssue, 
@@ -9,7 +9,7 @@ import {
   SocialCardData,
   MasterPlanStep 
 } from '../../src/types/index.ts';
-import { auditLiveUrl, UrlAuditFindings } from './urlAuditor.ts';
+import { auditLiveUrl, type UrlAuditFindings } from './urlAuditor.ts';
 import { parseGitHubUrl, fetchRepoMetadata, fetchRepoKeyFiles } from './githubFetcher.ts';
 import { sanitizeCredentials } from './sanitization.ts';
 

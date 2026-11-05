@@ -1,4 +1,4 @@
-import { MasterPlanStep, ScanResult } from '../../src/types/index.ts';
+import type { MasterPlanStep, ScanResult } from '../../src/types/index.ts';
 
 export interface ArchitectAdviceRequest {
   message: string;
