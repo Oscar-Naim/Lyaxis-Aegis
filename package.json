@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "vite build && esbuild api-src/scan.ts api-src/architect.ts api-src/pipeline.ts --bundle --platform=node --format=esm --target=node20 --outdir=api",
     "start": "tsx server.ts",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
@@ -14,6 +14,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "dotenv": "^16.4.7",
+    "esbuild": "^0.28.2",
     "express": "^4.21.2",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",

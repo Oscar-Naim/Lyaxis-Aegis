@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "vite build",
+  "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "crons": [
     {
@@ -10,20 +10,8 @@
   ],
   "rewrites": [
     {
-      "source": "/api/scan",
-      "destination": "/api/scan"
-    },
-    {
-      "source": "/api/architect",
-      "destination": "/api/architect"
-    },
-    {
       "source": "/api/chat",
       "destination": "/api/architect"
-    },
-    {
-      "source": "/api/pipeline",
-      "destination": "/api/pipeline"
     },
     {
       "source": "/api/pipeline/simulate",

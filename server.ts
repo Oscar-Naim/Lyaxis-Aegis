@@ -3,9 +3,9 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { runAegisForensicScan } from './api/_shared/aegisEngine.ts';
-import { parseGitHubUrl, fetchRepoMetadata } from './api/_shared/githubFetcher.ts';
-import { generateMasterImplementationPlan, handleArchitectChat } from './api/_shared/lyaxisArchitect.ts';
+import { runAegisForensicScan } from './api-src/_shared/aegisEngine.ts';
+import { parseGitHubUrl, fetchRepoMetadata } from './api-src/_shared/githubFetcher.ts';
+import { generateMasterImplementationPlan, handleArchitectChat } from './api-src/_shared/lyaxisArchitect.ts';
 
 dotenv.config();
 
