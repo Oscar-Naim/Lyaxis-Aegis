@@ -124,6 +124,7 @@ export interface ScanResult {
   overallScore: number;       // 0-100
   securityScore: number;      // 0-100 (Inmunidad)
   performanceScore: number;   // 0-100 (Velocidad)
+  architectureScore?: number; // 0-100 (LYAXIS Architect Score)
   socialSeoScore: number;     // 0-100 (Presencia Social / SEO)
   privacyScore: number;       // 0-100 (Accesibilidad / Privacidad)
   summary: string;

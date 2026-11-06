@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild api-src/scan.ts api-src/architect.ts api-src/pipeline.ts --bundle --platform=node --format=esm --target=node20 --outdir=api",
+    "build:catalog": "node scripts/build-sovereign-catalog.cjs",
+    "build:exe": "node scripts/build-exe.cjs",
     "start": "tsx server.ts",
     "preview": "vite preview",
     "lint": "tsc --noEmit",

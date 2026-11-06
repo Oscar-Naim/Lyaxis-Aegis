@@ -131,7 +131,7 @@ Tengo acceso directo a los resultados de la auditoría en tiempo real de **${cur
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-white text-sm">LYAXIS Architect Copilot</span>
+              <span className="font-bold text-white text-sm">LYAXIS Architect</span>
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono">
                 EN VIVO
               </span>

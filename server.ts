@@ -165,6 +165,68 @@ app.post(['/api/pipeline', '/api/pipeline/simulate'], (req, res) => {
   return res.json(mockRun);
 });
 
+// LYAXIS HARNESS: Sovereign Harness Endpoints
+import { SQUADS, SOVEREIGN_AGENTS, SOVEREIGN_SKILLS, HARNESS_METRICS } from './api-src/_shared/sovereignHarnessData.ts';
+import { detectProject, injectSovereignHarness, runDoctor, simulateSwarmExecution } from './api-src/_shared/sovereignHarnessEngine.ts';
+
+// Get status of target directory / current harness
+app.get('/api/harness/status', (req, res) => {
+  try {
+    const targetPath = (req.query.path as string) || process.cwd();
+    const info = detectProject(targetPath);
+    return res.json({ info, metrics: HARNESS_METRICS });
+  } catch (err: any) {
+    console.error('Error in /api/harness/status:', err);
+    return res.status(500).json({ error: 'Error al detectar estado del harness' });
+  }
+});
+
+// Get complete catalog of 34 agents and 274 skills
+app.get('/api/harness/catalog', (req, res) => {
+  return res.json({
+    squads: SQUADS,
+    agents: SOVEREIGN_AGENTS,
+    skills: SOVEREIGN_SKILLS,
+    metrics: HARNESS_METRICS
+  });
+});
+
+// 1-Click Sovereign Harness Injection
+app.post('/api/harness/inject', (req, res) => {
+  try {
+    const { targetPath = '.', preset = 'full' } = req.body;
+    const result = injectSovereignHarness(targetPath, preset);
+    return res.json(result);
+  } catch (err: any) {
+    console.error('Error in /api/harness/inject:', err);
+    return res.status(500).json({ error: err.message || 'Error al inyectar el harness' });
+  }
+});
+
+// Real-Time Multi-Agent Swarm Simulation
+app.post('/api/harness/simulate', async (req, res) => {
+  try {
+    const { prompt = 'Refactorizar módulo con TDD y verificar compuerta de seguridad' } = req.body;
+    const result = await simulateSwarmExecution(prompt);
+    return res.json(result);
+  } catch (err: any) {
+    console.error('Error in /api/harness/simulate:', err);
+    return res.status(500).json({ error: 'Error al ejecutar simulación de enjambre' });
+  }
+});
+
+// Diagnostic Doctor check
+app.get('/api/harness/doctor', (req, res) => {
+  try {
+    const targetPath = (req.query.path as string) || process.cwd();
+    const result = runDoctor(targetPath);
+    return res.json(result);
+  } catch (err: any) {
+    console.error('Error in /api/harness/doctor:', err);
+    return res.status(500).json({ error: 'Error en diagnóstico doctor' });
+  }
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
