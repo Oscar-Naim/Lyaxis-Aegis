@@ -1,0 +1,60 @@
+{
+  "version": "4.2.0-SOVEREIGN",
+  "preset": "full",
+  "identity": "LYAXIS LABS",
+  "engines": [
+    "LYAXIS Architect",
+    "Aegis Engine"
+  ],
+  "activeSquads": [
+    "squad-security",
+    "squad-performance",
+    "squad-frontend",
+    "squad-backend",
+    "squad-tdd-qa",
+    "squad-ai-data"
+  ],
+  "activeAgents": [
+    "cpp-build-resolver",
+    "cpp-reviewer",
+    "csharp-reviewer",
+    "developer",
+    "django-build-resolver",
+    "django-reviewer",
+    "fastapi-reviewer",
+    "finding-verifier",
+    "flutter-build-resolver",
+    "flutter-reviewer",
+    "go-build-resolver",
+    "go-reviewer",
+    "java-build-resolver",
+    "java-reviewer",
+    "kotlin-build-resolver",
+    "kotlin-reviewer",
+    "mle-reviewer",
+    "php-reviewer",
+    "postgres-reviewer",
+    "python-reviewer",
+    "pytorch-build-resolver",
+    "rag-reviewer",
+    "react-build-resolver",
+    "react-reviewer",
+    "refuter-correctness",
+    "refuter-security",
+    "refuter-tests",
+    "rust-build-resolver",
+    "rust-reviewer",
+    "spec-miner",
+    "swift-build-resolver",
+    "swift-reviewer",
+    "typescript-reviewer",
+    "vue-reviewer"
+  ],
+  "policy": {
+    "failOnSeverity": "critical",
+    "maxHighAllowed": 0,
+    "minimumOverallScore": 85,
+    "requireSessionMemoryUpdate": true
+  },
+  "injectedAt": "2026-11-06T08:33:28.782Z"
+}
