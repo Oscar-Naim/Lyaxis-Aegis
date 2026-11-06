@@ -306,7 +306,7 @@ async function startGuiServer() {
       const response = handleArchitectChat({ message, history, currentScanContext, platformTarget: platform });
       return res.json({ response });
     } catch (err: any) {
-      return res.status(500).json({ error: 'Error en Copilot' });
+      return res.status(500).json({ error: 'Error en LYAXIS Architect' });
     }
   });
 
@@ -389,19 +389,43 @@ async function startGuiServer() {
     }
   }
 
-  // Start HTTP listener
-  const server = http.createServer(app);
-  server.listen(PORT, '0.0.0.0', () => {
-    const url = `http://localhost:${PORT}`;
-    console.log(`\x1b[32m[LYAXIS SOBERANO]\x1b[0m Servidor local ultrarrápido activo en: \x1b[1m\x1b[36m${url}\x1b[0m`);
-    console.log(`\x1b[32m[OBSIDIAN GLASS]\x1b[0m Abriendo interfaz en el navegador predeterminado...`);
-    console.log(`\x1b[90mPresiona Ctrl+C en cualquier momento para detener el servidor.\x1b[0m\n`);
+  // Start HTTP listener with automatic port fallback
+  let currentPort = PORT;
+  const maxPort = currentPort + 10;
 
-    // Auto-open browser on Windows
-    try {
-      exec(`start ${url}`);
-    } catch {}
-  });
+  function attemptListen(portToTry: number) {
+    const server = http.createServer(app);
+
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE' && portToTry < maxPort) {
+        console.warn(`\x1b[33m[PUERTO OCUPADO]\x1b[0m Puerto ${portToTry} en uso. Intentando en ${portToTry + 1}...`);
+        attemptListen(portToTry + 1);
+      } else {
+        console.error(`\x1b[31m[ERROR FATAL DE RED]\x1b[0m No se pudo iniciar el servidor en el puerto ${portToTry}:`, err.message);
+        process.exit(1);
+      }
+    });
+
+    server.listen(portToTry, '0.0.0.0', () => {
+      const url = `http://localhost:${portToTry}`;
+      console.log(`\x1b[32m[LYAXIS SOBERANO]\x1b[0m Servidor local ultrarrápido activo en: \x1b[1m\x1b[36m${url}\x1b[0m`);
+      console.log(`\x1b[32m[OBSIDIAN GLASS]\x1b[0m Abriendo interfaz en el navegador predeterminado...`);
+      console.log(`\x1b[90mPresiona Ctrl+C en cualquier momento para detener el servidor.\x1b[0m\n`);
+
+      // Auto-open browser on Windows safely
+      try {
+        if (process.platform === 'win32') {
+          exec(`start "" "${url}"`);
+        } else if (process.platform === 'darwin') {
+          exec(`open "${url}"`);
+        } else {
+          exec(`xdg-open "${url}"`);
+        }
+      } catch {}
+    });
+  }
+
+  attemptListen(currentPort);
 }
 
 // Run CLI

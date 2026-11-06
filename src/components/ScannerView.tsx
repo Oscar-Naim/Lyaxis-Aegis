@@ -217,7 +217,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({
             <span aria-hidden="true">·</span>
             <span>Descarga & Auditoría en Tiempo Real</span>
             <span aria-hidden="true">·</span>
-            <span>Gemini 3.8 Flash</span>
+            <span>Aegis Forensic Engine</span>
           </div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white">
             Auditoría de Seguridad & Rendimiento con URL de GitHub

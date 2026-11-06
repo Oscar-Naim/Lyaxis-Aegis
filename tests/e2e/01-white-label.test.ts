@@ -286,15 +286,16 @@ describe('01 · White-Label Brand Compliance Test Suite', () => {
       }
     });
 
-    it('collects and audits outstanding repository leaks for formal QA escalation', () => {
-      // Diagnostic scanner that verifies the QA escalation registry accurately logs any remaining leaks
+    it('strictly verifies zero commercial brand mentions across all frontend components and CLI', () => {
       const candidateFiles = [
         'cli/main.ts',
         'src/components/ScannerView.tsx',
         'src/components/AnalyticsDashboard.tsx',
         'src/components/RemediationViewer.tsx',
         'src/components/Navbar.tsx',
-        'src/components/ArchitectureChatbot.tsx'
+        'src/components/ArchitectureChatbot.tsx',
+        'src/App.tsx',
+        'PROJECT.md'
       ];
 
       const foundEscalations: Array<{ file: string; matches: string[] }> = [];
@@ -310,12 +311,7 @@ describe('01 · White-Label Brand Compliance Test Suite', () => {
         }
       }
 
-      // We assert that the escalation detector functions deterministically and indexes known items
-      expect(Array.isArray(foundEscalations)).toBe(true);
-      // If leaks exist, they are cleanly indexed for the handoff report
-      if (foundEscalations.length > 0) {
-        expect(foundEscalations.some(e => e.matches.length > 0)).toBe(true);
-      }
+      expect(foundEscalations, `Forbidden commercial brand leaks detected in: ${JSON.stringify(foundEscalations)}`).toEqual([]);
     });
   });
 

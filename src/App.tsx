@@ -122,7 +122,7 @@ export default function App() {
     setActiveTab('remediation');
   };
 
-  const handleAskCopilot = (topic: string, details?: string) => {
+  const handleAskArchitect = (topic: string, details?: string) => {
     const prompt = details
       ? `¿Cómo solucionar y qué consideraciones arquitectónicas tener en cuenta sobre "${topic}"?\nDetalle técnico:\n${details}`
       : `Explícame en detalle cómo resolver y prevenir "${topic}" en producción.`;
@@ -239,7 +239,7 @@ export default function App() {
                 isScanning={isScanning}
                 onRunScan={handleRunScan}
                 onSelectIssueForRemediation={handleSelectIssueForRemediation}
-                onAskCopilotAboutIssue={handleAskCopilot}
+                onAskCopilotAboutIssue={handleAskArchitect}
               />
             )}
 
@@ -248,7 +248,7 @@ export default function App() {
               <AnalyticsDashboard
                 currentScan={currentScan}
                 onSelectIssue={handleSelectIssueForRemediation}
-                onAskCopilot={handleAskCopilot}
+                onAskCopilot={handleAskArchitect}
               />
             )}
 
@@ -257,7 +257,7 @@ export default function App() {
               <RemediationViewer
                 currentScan={currentScan}
                 onApplyFix={handleApplyFix}
-                onAskCopilot={handleAskCopilot}
+                onAskCopilot={handleAskArchitect}
                 selectedIssueId={selectedRemediationId}
                 resolvedIssueIds={resolvedIssueIds}
               />
@@ -296,7 +296,7 @@ export default function App() {
               />
             )}
 
-            {/* Tab 11: Copilot LYAXIS Architect Chat */}
+            {/* Tab 11: LYAXIS Architect Chat */}
             {activeTab === 'chat' && (
               <ArchitectureChatbot
                 currentScan={currentScan}

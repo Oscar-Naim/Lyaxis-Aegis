@@ -30,7 +30,7 @@
 | **Parches & Diffs** | `RemediationViewer.tsx` | Visualizador Myers-diff y aplicación de remediaciones verificables. |
 | **Plan Maestro** | `ImplementationPlan.tsx` | Hoja de ruta arquitectónica guiada por LYAXIS Architect. |
 | **CI/CD Quality Gates** | `PipelineIntegration.tsx` | Simulación y exportación de workflows de integración continua. |
-| **Copilot Chatbot** | `ArchitectureChatbot.tsx` | Asistente conversacional especializado en arquitectura y mitigación. |
+| **LYAXIS Architect Chat** | `ArchitectureChatbot.tsx` | Asistente conversacional especializado en arquitectura y mitigación. |
 
 ## Escuadrones Tácticos
 1. **Seguridad Ofensiva & Defensiva** (Aegis Engine): `finding-verifier`, `refuter-security`, `refuter-correctness`.

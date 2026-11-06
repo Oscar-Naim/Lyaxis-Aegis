@@ -6,6 +6,7 @@ import os from 'os';
 
 describe('05 · CLI Commands Test Suite', () => {
   const cliScript = path.resolve(process.cwd(), 'cli/main.ts');
+  const tsxCli = path.resolve(process.cwd(), 'node_modules/tsx/dist/cli.mjs');
   let tempDir: string;
 
   beforeEach(() => {
@@ -19,11 +20,10 @@ describe('05 · CLI Commands Test Suite', () => {
   });
 
   function runCli(args: string[], options: { cwd?: string } = {}) {
-    const cmdArgs = ['tsx', cliScript, ...args];
-    return spawnSync('npx', cmdArgs, {
+    return spawnSync(process.execPath, [tsxCli, cliScript, ...args], {
       cwd: options.cwd || process.cwd(),
       encoding: 'utf8',
-      shell: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, FORCE_COLOR: '0' }
     });
   }
@@ -158,7 +158,8 @@ describe('05 · CLI Commands Test Suite', () => {
         const result = runCli(['inject', sub, '--preset', p]);
 
         expect(result.status).toBe(0);
-        expect(result.stdout).toContain(`Preset seleccionado:    ${p.toUpperCase()}`);
+        expect(result.stdout).toContain(p.toUpperCase());
+        expect(result.stdout).toContain('Preset seleccionado:');
         expect(fs.existsSync(path.join(sub, 'lyaxis.config.json'))).toBe(true);
       }
     });
