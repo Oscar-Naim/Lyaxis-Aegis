@@ -1,13 +1,37 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execSync, spawnSync } from 'child_process';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import esbuild from 'esbuild';
 
 describe('05 · CLI Commands Test Suite', () => {
-  const cliScript = path.resolve(process.cwd(), 'cli/main.ts');
-  const tsxCli = path.resolve(process.cwd(), 'node_modules/tsx/dist/cli.mjs');
+  const cliEntry = path.resolve(process.cwd(), 'cli/main.ts');
+  let compiledCliBundle: string;
+  let bundleTempDir: string;
   let tempDir: string;
+
+  beforeAll(() => {
+    bundleTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lyaxis-cli-bundle-'));
+    compiledCliBundle = path.join(bundleTempDir, 'lyaxis-cli.cjs');
+    esbuild.buildSync({
+      entryPoints: [cliEntry],
+      bundle: true,
+      platform: 'node',
+      target: 'node20',
+      format: 'cjs',
+      outfile: compiledCliBundle,
+      define: {
+        'process.env.NODE_ENV': '"production"'
+      }
+    });
+  });
+
+  afterAll(() => {
+    if (bundleTempDir && fs.existsSync(bundleTempDir)) {
+      fs.rmSync(bundleTempDir, { recursive: true, force: true });
+    }
+  });
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lyaxis-cli-test-'));
@@ -20,7 +44,7 @@ describe('05 · CLI Commands Test Suite', () => {
   });
 
   function runCli(args: string[], options: { cwd?: string } = {}) {
-    return spawnSync(process.execPath, [tsxCli, cliScript, ...args], {
+    return spawnSync(process.execPath, [compiledCliBundle, ...args], {
       cwd: options.cwd || process.cwd(),
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -216,7 +240,7 @@ describe('05 · CLI Commands Test Suite', () => {
       const elapsed = performance.now() - t0;
 
       expect(result.status).toBe(0);
-      expect(elapsed).toBeLessThan(3500);
+      expect(elapsed).toBeLessThan(2500);
     });
   });
 });

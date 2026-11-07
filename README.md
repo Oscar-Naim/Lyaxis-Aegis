@@ -130,5 +130,3 @@ npm run build:exe
 
 ---
 *LYAXIS LABS © 2026 · Arquitectura Soberana de Agentes Autónomos.*
-#   L y a x i s A e g i s  
- 
